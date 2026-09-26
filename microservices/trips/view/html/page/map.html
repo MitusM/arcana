@@ -1,0 +1,53 @@
+<div class="container-fluid">
+  {# ---- Карта поездки (шаг 2: общий рендер от maps:map) ---- #}
+  <div class="row">{% include "./breadcrumb.html" %}</div>
+
+  <div class="card" style="padding: 16px; margin-bottom: 16px;">
+    <h2 style="margin: 0 0 4px;">{{ trip.title }}</h2>
+    {% if trip.description %}
+    <p style="margin: 0 0 8px; color: #666;">{{ trip.description }}</p>
+    {% endif %}
+    {% if trip.start_date and trip.end_date %}
+    <small style="color:#888;">
+      {{ trip.start_date }} — {{ trip.end_date }}
+    </small>
+    {% endif %}
+    <span style="float:right;">
+      <a href="/trips/">← к поездкам</a>
+    </span>
+  </div>
+
+  {% if places and places.length %}
+  <div class="card" style="padding: 16px; margin-bottom: 16px;">
+    <strong>Места ({{ places.length }}):</strong>
+    <ul style="margin: 8px 0 0; padding-left: 20px;">
+      {% for p in places %}
+      <li>
+        {{ p.name }}
+        {% if p.day %}<em>(день {{ p.day }})</em>{% endif %}
+        {% if p.note %}— {{ p.note }}{% endif %}
+        <small style="color:#888;">[{{ p.lat }}, {{ p.lng }}]</small>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% else %}
+  <div class="card" style="padding: 16px; margin-bottom: 16px; color:#888;">
+    В этой поездке пока нет мест. Карта пуста.
+  </div>
+  {% endif %}
+
+  {# ---- Карта от maps:map (MapLibre + MapsRender.renderMap) ---- #}
+  {% if mapHtml %}
+  {{ mapHtml | safe }}
+  <script>
+    // Места поездки (приватные, trips подставляет сам — maps их не знает)
+    var PLACES = {{ places | dump | safe }};
+    window.MapsRender.renderMap('trip-map', PLACES, { markerColor: '#e11d48' });
+  </script>
+  {% else %}
+  <div class="card" style="padding: 16px; color:#888;">
+    Карта недоступна (maps:map не ответил).
+  </div>
+  {% endif %}
+</div>

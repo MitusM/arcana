@@ -1,0 +1,149 @@
+{# ============================================================
+   page/dest.html — страница места/хаба (destinations)
+   Данные (data):
+     title, description, image, h1,
+     breadcrumb: [{name, url, current}],   // от корня к текущему
+     children: [{slug, title, level}],     // достопримечательности/подместа
+     content:  HTML контент хаба (safe),
+     links:    [{url, title}] — блок перелинковки (похожие/туры/где жить),
+     top_places: [{url, title, level}] — прямые ссылки на цели (через уровни),
+     siblings:  [{url, title, level}] — похожие места на том же уровне
+   ============================================================ #}
+
+{# ---------- Карточка места/хаба (как на /destinations/) ----------
+   Поля: url, image, level, cardTitle (H1 если отличен от title, иначе title), intro #}
+{% macro destCard(c) %}
+<a class="dest-card" href="{{ c.url }}">
+  {% if c.image %}
+  <div class="dc-media"><img class="dc-img" src="{{ c.image }}" alt="{{ c.cardTitle }}" loading="lazy" /></div>
+  {% endif %}
+  <div class="dc-body">
+    {% if c.level %}<span class="lv">{{ c.level }}</span>{% endif %}
+    <span class="t">{{ c.cardTitle }}</span>
+    {% if c.intro %}<span class="dc-desc">{{ c.intro }}</span>{% endif %}
+  </div>
+</a>
+{% endmacro %}
+
+{# ---------- Хлебные крошки ---------- #}
+{% if breadcrumb %}
+<nav class="dest-breadcrumb" aria-label="breadcrumb">
+  <ol>
+    {% for crumb in breadcrumb %}
+    <li>
+      {% if crumb.current %}
+      <span aria-current="page">{{ crumb.name }}</span>
+      {% else %}
+      <a href="{{ crumb.url }}">{{ crumb.name }}</a>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+</nav>
+{% endif %}
+
+{# ---------- Hero: основное изображение на всю ширину + H1 поверх ---------- #}
+{% if image %}
+<div class="dest-hero">
+  <img class="dest-hero-bg" src="{{ image }}" alt="{{ h1 }}" loading="eager" fetchpriority="high" />
+  <div class="dest-hero-shade"></div>
+  <div class="dest-hero-inner">
+    <h1 class="dest-h1 dest-h1-over">{{ h1 }}</h1>
+    {% if description %}<p class="dest-desc dest-desc-over">{{ description }}</p>{% endif %}
+  </div>
+</div>
+{% else %}
+{# Без картинки — обычный заголовок/описание в колонке #}
+<h1 class="dest-h1">{{ h1 }}</h1>
+{% if description %}<p class="dest-desc">{{ description }}</p>{% endif %}
+{% endif %}
+
+{# ---------- Бейдж типа объекта (DestType) ---------- #}
+{% if type_badge %}
+<div class="dest-type-badge">
+  <span class="dest-type-badge-icon" data-icon="{{ type_badge.icon }}"></span>
+  <span class="dest-type-badge-name">{{ type_badge.name }}</span>
+</div>
+{% endif %}
+
+{# ---------- Контент хаба ---------- #}
+{% if content %}<div class="dest-content">{{ content | safe }}</div>{% endif %}
+
+{# ---------- Карта места (этап 5: интеграция с МС maps) ---------- #}
+{% if mapHtml and mapPoints and mapPoints.length %}
+<div class="dest-map">
+  <h2 class="dest-h2">Карта
+    {% if level !== 'attraction' %}
+    <a class="dest-map-full" href="/maps/{{ slug }}" target="_blank">Посмотреть все объекты на карте →</a>
+    {% endif %}
+  </h2>
+  {{ mapHtml | safe }}
+  <script>
+    (function () {
+      var pts = {{ mapPoints | dump | safe }};
+      var c = {{ mapCenter | dump | safe }} || null;
+      if (window.MapsRender && pts && pts.length) {
+        window.MapsRender.renderMap('dest-map', pts, {
+          markerColor: '#e11d48',
+          {% if mapCenter %}center: [c.lng, c.lat],{% endif %}
+          zoom: pts.length > 1 ? 7 : 10
+        });
+      }
+    })();
+  </script>
+</div>
+{% endif %}
+
+{# ---------- Топ-места: прямые ссылки на цели через уровни (этап 4) ---------- #}
+{% if top_places and top_places.length %}
+<h2 class="dest-h2">Топ-места</h2>
+<div class="dest-grid">
+  {% for tp in top_places %}
+    {{ destCard(tp) }}
+  {% endfor %}
+</div>
+{% endif %}
+
+{# ---------- Подместа / достопримечательности (для хабов) ---------- #}
+{% if children and children.length %}
+<h2 class="dest-h2">{% if level == 'country' %}Направления{% elif level == 'region' %}Места и достопримечательности{% else %}Что посмотреть{% endif %}</h2>
+<div class="dest-grid">
+  {% for child in children %}
+    {{ destCard(child) }}
+  {% endfor %}
+</div>
+{% endif %}
+
+{# ---------- Похожие места (братья, этап 4) ---------- #}
+{% if siblings and siblings.length %}
+<div class="dest-links">
+  <h2 class="dest-h2">Похожие места</h2>
+  <div class="dest-grid">
+    {% for s in siblings %}
+      {{ destCard(s) }}
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{# ---------- Блоки перелинковки (рукние links: где жить / тур; этап 4) ---------- #}
+{% if links and links.length %}
+<div class="dest-links">
+  <h2 class="dest-h2">Полезное</h2>
+  {% for link in links %}
+  <a class="dest-link" href="{{ link.url }}">{{ link.title }}</a>
+  {% endfor %}
+</div>
+{% endif %}
+
+{# ---------- Статьи /stati/ по месту (этап 6: блог как машина ссылок) ---------- #}
+{% if articles and articles.length %}
+<div class="dest-links">
+  <h2 class="dest-h2">Читайте ещё</h2>
+  <ul class="dest-articles">
+  {% for a in articles %}
+    <li class="dest-article"><a class="dest-link" href="{{ a.url }}">{{ a.title }}</a></li>
+  {% endfor %}
+  </ul>
+</div>
+{% endif %}

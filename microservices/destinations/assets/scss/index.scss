@@ -1,0 +1,403 @@
+// ============================================================
+// destinations — публичные стили (layout + страницы хаба/места)
+// Сборка: webpack entry `destinations` → public/css/destinations.css
+// ============================================================
+
+// Базовые стили layout (из view/html/index.html)
+body {
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  line-height: 1.6;
+  color: #1f2937;
+  margin: 0;
+  background: #fff;
+}
+
+.dest-nav {
+  background: #111827;
+  color: #fff;
+  padding: 12px 0;
+  .wrap {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 20px;
+  }
+  a {
+    color: #f9fafb;
+    text-decoration: none;
+    font-weight: 600;
+  }
+}
+
+.dest-main {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 32px 20px 64px;
+}
+
+.dest-breadcrumb {
+  font-size: 14px;
+  margin-bottom: 24px;
+  color: #6b7280;
+  ol {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  li::after {
+    content: '›';
+    margin: 0 6px;
+    color: #9ca3af;
+  }
+  li:last-child::after {
+    content: '';
+  }
+  a {
+    color: #6b7280;
+    text-decoration: none;
+    &:hover {
+      color: #1f2937;
+      text-decoration: underline;
+    }
+  }
+  [aria-current] {
+    color: #1f2937;
+    font-weight: 600;
+  }
+}
+
+h1.dest-h1 {
+  font-size: 2rem;
+  margin: 0 0 16px;
+}
+
+.dest-desc {
+  font-size: 1.05rem;
+  color: #374151;
+  margin-bottom: 28px;
+}
+
+// ------------------------------------------------------------
+// Hero: основное изображение на всю ширину экрана, H1 поверх
+// (карточка/хаб с image). Вырываем блок из колонки .dest-main
+// (max-width 900px) на полную ширину вьюпорта.
+// ------------------------------------------------------------
+.dest-hero {
+  position: relative;
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  // на всю высоту вьюпорта — полноэкранная обложка с H1 поверх
+  min-height: 80vh;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-end;
+  background: #111827; // пока грузится фото / если битый url
+  margin-bottom: 28px;
+
+  .dest-hero-bg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+  }
+
+  // затемнение снизу/по всему для читаемости поверх яркого фото
+  .dest-hero-shade {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      180deg,
+      rgba(17, 24, 39, 0.15) 0%,
+      rgba(17, 24, 39, 0) 35%,
+      rgba(17, 24, 39, 0.65) 100%
+    );
+  }
+
+  .dest-hero-inner {
+    position: relative;
+    z-index: 1;
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 20px 32px;
+    width: 100%;
+    box-sizing: border-box;
+    color: #fff;
+
+    h1.dest-h1-over {
+      color: #fff;
+      text-shadow: 0 2px 12px rgba(0, 0, 0, 0.45);
+      margin: 0;
+      font-size: clamp(1.7rem, 4.5vw, 2.8rem);
+    }
+
+    .dest-desc-over {
+      color: rgba(255, 255, 255, 0.95);
+      text-shadow: 0 1px 8px rgba(0, 0, 0, 0.5);
+      margin: 8px 0 0;
+      max-width: 640px;
+    }
+  }
+}
+
+// На маленьких экранах держим полноэкранность; чуть меньше нижний отступ,
+// чтобы H1 и описание не прилипали к самому краю.
+@media (max-width: 640px) {
+  .dest-hero {
+    min-height: 80vh;
+    .dest-hero-inner {
+      padding-bottom: 20px;
+    }
+  }
+}
+
+.dest-content {
+  font-size: 1rem;
+  img {
+    max-width: 100%;
+    height: auto;
+  }
+}
+
+h2.dest-h2 {
+  font-size: 1.4rem;
+  margin: 32px 0 12px;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 8px;
+}
+
+.dest-children {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.dest-child {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 14px;
+  text-decoration: none;
+  color: inherit;
+  display: block;
+  &:hover {
+    border-color: #111827;
+  }
+  .t {
+    font-weight: 600;
+  }
+  .lv {
+    text-transform: uppercase;
+    font-size: 11px;
+    color: #6b7280;
+    letter-spacing: 0.5px;
+  }
+  // описание и контент в карточке направления (root)
+  .dc-desc {
+    display: block;
+    margin-top: 6px;
+    font-size: 0.9rem;
+    color: #374151;
+  }
+  .dc-content {
+    display: block;
+    margin-top: 8px;
+    font-size: 0.85rem;
+    color: #4b5563;
+    line-height: 1.45;
+    // обрезка длинного контента — не растягивает карточку
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    > *:first-child {
+      margin-top: 0;
+    }
+    > *:last-child {
+      margin-bottom: 0;
+    }
+  }
+}
+
+// ---- Корневая страница: grid-карточки направлений (root.html) ----
+.dest-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.dest-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+  &:hover {
+    box-shadow: 0 6px 16px -4px rgba(0, 0, 0, 0.15);
+    border-color: #111827;
+  }
+  // фото — сверху, фикс. соотношение, не растягивает карточку
+  .dc-media {
+    aspect-ratio: 16 / 9;
+    background: #f3f4f6;
+    overflow: hidden;
+  }
+  .dc-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .dc-body {
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .t {
+    font-weight: 600;
+    font-size: 1.05rem;
+  }
+  .lv {
+    text-transform: uppercase;
+    font-size: 11px;
+    color: #6b7280;
+    letter-spacing: 0.5px;
+  }
+  .dc-desc {
+    margin-top: 6px;
+    font-size: 0.9rem;
+    color: #374151;
+  }
+  .dc-content {
+    margin-top: 8px;
+    font-size: 0.85rem;
+    color: #4b5563;
+    line-height: 1.45;
+    > *:first-child {
+      margin-top: 0;
+    }
+  }
+}
+
+.dest-links {
+  margin-top: 32px;
+}
+
+.dest-link {
+  display: inline-block;
+  margin: 4px 8px 4px 0;
+  padding: 8px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  color: #1f2937;
+  text-decoration: none;
+  &:hover {
+    background: #f3f4f6;
+  }
+}
+
+.dest-foot {
+  border-top: 1px solid #e5e7eb;
+  margin-top: 48px;
+  padding-top: 20px;
+  font-size: 13px;
+  color: #6b7280;
+  .wrap {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 20px;
+  }
+}
+
+// Блок статей "Читайте ещё" (из dest.html)
+.dest-articles {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.dest-article {
+  margin: 6px 0;
+  .dest-link {
+    margin: 0;
+  }
+}
+
+// Стиль контейнера карты (из dest.html: .dest-map)
+// Карта на всю ширину браузера — break out из .dest-main (как hero).
+// Заголовок h2 при этом остаётся в контентной колонке 1280px.
+.dest-map {
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  margin-top: 24px;
+  margin-bottom: 24px;
+
+  h2.dest-h2 {
+    max-width: 1280px;
+    margin: 0 auto 12px;
+    padding: 0 20px;
+  }
+
+  // Внутренний контейнер карты (#dest-map) уже имеет width:100%, height и border-radius
+  // от renderMapHtml.js, подхватится автоматически
+  // На мобильных — без дополнительных отступов (карта на всю ширину, как hero)
+}
+
+// ---- Бейдж типа объекта (DestType) ----
+.dest-type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 24px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  background: #f3f4f6;
+  font-size: 0.9rem;
+  color: #374151;
+  .dest-type-badge-icon {
+    width: 18px;
+    height: 18px;
+    background: #9ca3af;
+    border-radius: 50%;
+  }
+  .dest-type-badge-name {
+    font-weight: 500;
+  }
+}
+
+// ---- Страница категории (page/category.html) ----
+.dest-category-header {
+  margin-bottom: 28px;
+  .dest-h1 {
+    font-size: 2rem;
+    margin: 0 0 8px;
+  }
+  .dest-desc {
+    color: #374151;
+    margin-bottom: 12px;
+  }
+  .dest-parent-link {
+    a {
+      color: #2563eb;
+      text-decoration: none;
+      &:hover {
+        text-decoration: underline;
+      }
+    }
+  }
+}
+
+.dest-empty {
+  color: #6b7280;
+  font-style: italic;
+}

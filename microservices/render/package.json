@@ -1,0 +1,15 @@
+{
+  "name": "render",
+  "version": "1.0.0",
+  "type": "commonjs",
+  "description": "Шаблонизатор",
+  "main": "app.js",
+  "scripts": {
+    "test": ""
+  },
+  "author": "MitusM",
+  "license": "MIT",
+  "dependencies": {
+
+  }
+}

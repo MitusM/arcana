@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+    <meta name="robots" content="{{ robots | default('index, follow') }}" />
+    <meta name="description" content="{{ description | default('') }}" />
+    <title>{{ title }}</title>
+    {% if canonical %}<link rel="canonical" href="{{ canonical }}" />{% endif %}
+    <!-- BreadcrumbList schema -->
+    {{ breadcrumb_schema | safe }}
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="{{ og_title | default(title) }}" />
+    {% if og_description %}<meta property="og:description" content="{{ og_description }}" />{% endif %}
+    {% if image %}<meta property="og:image" content="{{ image }}" />{% endif %}
+    <link rel="stylesheet" href="/public/css/style.css" />
+    <link rel="stylesheet" href="/public/css/vendors.css" />
+    <link rel="stylesheet" href="/public/css/destinations.css" />
+    {% if admin_page %}
+    <link rel="stylesheet" href="/public/css/destinations_admin.css" />
+    {# dropzone v6 через CDN #}
+    <link href="https://unpkg.com/dropzone@6.0.0-beta.1/dist/dropzone.css" rel="stylesheet" type="text/css" />
+    {% endif %}
+  </head>
+  <body>
+    <nav class="dest-nav" role="navigation">
+      <div class="wrap"><a href="/destinations/">Куда поехать</a></div>
+    </nav>
+
+    <main class="dest-main{% if admin_page %} dest-main-admin{% endif %}" role="main">
+      {% include page %}
+    </main>
+
+    <footer class="dest-foot">
+      <div class="wrap">
+        © {{ current_year | default('2026') }} cloudFRT — путеводитель по направлениям
+      </div>
+    </footer>
+    {% if admin_page %}
+    <script src="/public/js/tinymce.min.js"></script>
+    {# dropzone через CDN #}
+    <script src="https://unpkg.com/dropzone@6.0.0-beta.1/dist/dropzone-min.js"></script>
+    {# отключаем авто-сканирование (admin.js сам инициализирует с URL) #}
+    <script>window.Dropzone && (window.Dropzone.autoDiscover = false);</script>
+    <script src="/public/js/runtime.js"></script>
+    <script src="/public/js/vendors.js"></script>
+    <script src="/public/js/style.js"></script>
+    <script src="/public/js/destinations_admin.js"></script>
+    {% endif %}
+  </body>
+</html>
