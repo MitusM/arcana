@@ -21,77 +21,62 @@ class Model extends PDO {
 
   async queryAll(query, params) {
     try {
-      const session = await this.pool.acquire()
-      const message = await session.query(query, params).all()
-      session.close()
-      return message
+      const res = await this.db.queryAll(query, params)
+      return res
     } catch (err) {
-      console.log('⚡ err::PDO.queryAll => ModelService.js:19 ', err)
+      console.log('⚡ err::queryAll => ', err)
       throw err
     }
   }
 
   async queryOne(query, params) {
     try {
-      const session = await this.pool.acquire()
-      const message = await session.query(query, params).one()
-      session.close()
-      return message
+      const res = await this.db.queryOne(query, params)
+      return res
     } catch (err) {
-      console.log('⚡ err::PDO.query => ', err)
+      console.log('⚡ err::queryOne => ', err)
       throw err
     }
   }
 
   async queryRid(query) {
     try {
-      const session = await this.pool.acquire()
-      const message = await session.query(query).one()
-      session.close()
-      return message
+      const res = await this.db.pool.query(query)
+      return res.rows[0] || null
     } catch (err) {
       return err
     }
   }
 
-  liveQuery(options) {}
-
-  async insert(query, json) {
+  async insert(query, params) {
     try {
-      const session = await this.pool.acquire()
-      const message = await session.command(query, json).one()
-      session.close()
-      return { message: message, type: 'insert', done: true }
+      const res = await this.db.command(query, params)
+      return { message: res, type: 'insert', done: true }
     } catch (err) {
-      console.log('⚡ err::PDO.insert => ', err)
+      console.log('⚡ err::insert => ', err)
       return { err: err, done: false }
     }
   }
 
   async create(edgeClass, from, to) {
     try {
-      const session = await this.pool.acquire()
-      const message = await session
-        .create('EDGE', edgeClass)
-        .from(from)
-        .to(to)
-        .one()
-      session.close()
-      return message
+      const res = await this.db.pool.query(
+        `CREATE EDGE ${edgeClass} FROM $1 TO $2`,
+        [from, to]
+      )
+      return res.rows[0] || null
     } catch (err) {
-      console.log('⚡ err::PDO.create => ', err)
+      console.log('⚡ err::create => ', err)
       return { err: err, done: false }
     }
   }
 
-  async command(query) {
+  async command(query, params = []) {
     try {
-      const session = await this.pool.acquire()
-      const message = await session.command(query).all()
-      session.close()
-      return message
+      const res = await this.db.command(query, params)
+      return res
     } catch (err) {
-      console.log('⚡ err::PDO.command => ', err)
+      console.log('⚡ err::command => ', err)
       return err
     }
   }

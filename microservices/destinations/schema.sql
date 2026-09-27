@@ -1,5 +1,5 @@
 -- ============================================================================
--- schema.sql — схема OrientDB для МС destinations (cloudFRT)
+-- schema.sql — схема ArcadeDB для МС destinations (arcana)
 --
 -- Гео-каталог мест с SEO-иерархией в виде ГРАФА.
 --
@@ -10,80 +10,61 @@
 --   Dest -HAS_ARTICLE-> Article место → статьи /stati/ (МС article)
 --   Dest -HAS_MAP-> Map         место → карты (МС maps)
 --
--- ВАЖНО (те же ограничения OrientDB 3.2.55, что в maps/schema.sql):
+-- ВАЖНО:
 --  1. Код destinations НЕ создаёт схему автоматически (только DML: CREATE VERTEX).
 --     Класс/свойства/индексы заводятся этим скриптом ВРУЧНУЮ.
 --  2. Выполнять ОДИН РАЗ на чистой БД (или пустой схеме Dest).
---  3. OrientDB 3.2.55 напрямую НЕ поддерживает:
---     - IF NOT EXISTS для CREATE CLASS/PROPERTY -> "Error parsing query"
---     - DEFAULT внутри CREATE PROPERTY
---       Поэтому DEFAULT задаётся отдельной командой ALTER PROPERTY, а повторный
---       прогон даёт "already exists" — это норма, console продолжает.
+--  3. ArcadeDB поддерживает IF NOT EXISTS — скрипт можно прогонять повторно.
 --
--- НЮАНСЫ РАБОТЫ (учитывать в коде destinations):
---  * created — тип DATETIME, пишется через toOrientDate() helper
---    (формат 'YYYY-MM-DD HH:mm:ss'); ISO-строки OrientDB не парсит.
---  * location — конвертируется ST_GeomFromText('POINT(lng lat)') (как article).
---  * Индексы: slug+уникальность на уровне дерева — через UNIQUE на (slug) здесь,
---    при необходимости уникальности пути (родитель+slug) — пересмотреть на этапе 2.
+-- НЮАНСЫ:
+--  * location — STRING (WKT "POINT(lng lat)"), задаётся через geo.geomFromText()
+--  * links — STRING (JSON), вместо EMBEDDEDMAP
+--  * GEOSPATIAL индекс на location
 --
--- Выполнить через OrientDB console:
---   cd /media/04E0AC01E0ABF6D8/orientdb-community-3.2.55
---   ./bin/console.sh
---   connect remote:127.0.0.1/cloudFRT misha <PASSWORD>
---   (вставить содержимое schema.sql)
+-- Выполнить через ArcadeDB Studio (http://localhost:2480) или HTTP API:
+--   curl -u root:arcade4db -X POST "http://localhost:2480/api/v1/query/cloudFRT/sql" \
+--     -H "Content-Type: application/json" \
+--     -d '{"command":"<sql>","language":"sql"}'
 -- ============================================================================
 
 /* ---------- ВЕРШИНА Dest: узел гео-каталога ---------- */
-CREATE CLASS Dest EXTENDS V;
-CREATE PROPERTY Dest.slug STRING;              -- сегмент в URL (напр. 'gornyj-altaj')
-CREATE PROPERTY Dest.title STRING;             -- название места
-CREATE PROPERTY Dest.h1 STRING;                -- H1 (если отличен от title)
-CREATE PROPERTY Dest.level STRING;             -- country | region | place | attraction
-CREATE PROPERTY Dest.description STRING;       -- SEO description
-CREATE PROPERTY Dest.content STRING;          -- контент хаба (HTML-строка; был EMBEDDED — ошибка, nowi fix 31.08)
-CREATE PROPERTY Dest.image STRING;             -- URL изображения
-CREATE PROPERTY Dest.summary STRING;           -- краткое описание (для карты)
-CREATE PROPERTY Dest.thumbnail STRING;         -- миниатюра 320px (для карты)
-CREATE PROPERTY Dest.is_hub BOOLEAN;           -- является ли хабом (default true)
-ALTER PROPERTY Dest.is_hub DEFAULT true;
-CREATE PROPERTY Dest.priority DOUBLE;          -- приоритет в sitemap (0..1)
-CREATE PROPERTY Dest.location EMBEDDED;        -- координаты (ST_GeomFromText POINT)
-CREATE PROPERTY Dest.created DATETIME;         -- ТОЛЬКО toOrientDate(), не ISO
-CREATE PROPERTY Dest.links EMBEDDEDMAP;        -- ручные блоки перелинковки: { top_places:[{slug,title,url}], похожие:[...], где_жить:[...], тур:[...] } (этап 4)
-CREATE PROPERTY Dest.status STRING;             -- 'draft' (default) | 'published'. Введено 04.09.2026: новые узлы создаются ЧЕРНОВИКАМИ и не
-                                                -- показываются на сайте, пока админ не опубликует. Черновик прячет и всё своё поддерево.
-ALTER PROPERTY Dest.status DEFAULT 'draft';
+CREATE VERTEX TYPE Dest IF NOT EXISTS;
+ALTER TYPE Dest PROPERTY slug STRING;              -- сегмент в URL (напр. 'gornyj-altaj')
+ALTER TYPE Dest PROPERTY title STRING;             -- название места
+ALTER TYPE Dest PROPERTY h1 STRING;                -- H1 (если отличен от title)
+ALTER TYPE Dest PROPERTY level STRING;             -- country | region | place | attraction
+ALTER TYPE Dest PROPERTY description STRING;       -- SEO description
+ALTER TYPE Dest PROPERTY content STRING;           -- контент хаба (HTML-строка)
+ALTER TYPE Dest PROPERTY image STRING;             -- URL изображения
+ALTER TYPE Dest PROPERTY summary STRING;           -- краткое описание (для карты)
+ALTER TYPE Dest PROPERTY thumbnail STRING;         -- миниатюра 320px (для карты)
+ALTER TYPE Dest PROPERTY is_hub BOOLEAN DEFAULT true;
+ALTER TYPE Dest PROPERTY priority DOUBLE;          -- приоритет в sitemap (0..1)
+ALTER TYPE Dest PROPERTY location STRING;          -- координаты — WKT "POINT(lng lat)" через geo.geomFromText()
+ALTER TYPE Dest PROPERTY created DATETIME;
+ALTER TYPE Dest PROPERTY links STRING;             -- ручные блоки перелинковки: JSON (вместо EMBEDDEDMAP)
+ALTER TYPE Dest PROPERTY status STRING DEFAULT 'draft';  -- 'draft' (default) | 'published'
 
 /* ---------- ИНДЕКСЫ Dest ---------- */
-CREATE INDEX Dest.slug_idx ON Dest (slug) NOTUNIQUE;
-CREATE INDEX Dest.level_idx ON Dest (level) NOTUNIQUE;
+CREATE INDEX IF NOT EXISTS ON Dest (slug) NOTUNIQUE;
+CREATE INDEX IF NOT EXISTS ON Dest (level) NOTUNIQUE;
+CREATE INDEX IF NOT EXISTS ON Dest (location) GEOSPATIAL;
 
-/* ---------- РЁБРА ---------- */
-CREATE CLASS PART_OF EXTENDS E;      -- иерархия мест (child -PART_OF-> parent)
--- (связи с trips/article/maps заводим по мере интеграции этапов 5-6;
---  классы рёбер можно создавать тут заранее:)
-CREATE CLASS HAS_TRIP EXTENDS E;     -- место -HAS_TRIP-> Trip
-CREATE CLASS HAS_ARTICLE EXTENDS E;  -- место -HAS_ARTICLE-> Article (/stati)
-CREATE CLASS HAS_MAP EXTENDS E;      -- место -HAS_MAP-> Map
-CREATE CLASS HAS_TYPE EXTENDS E;     -- Dest -HAS_TYPE-> DestType (тип объекта: озеро, водопад…)
+/* ---------- ТИПЫ РЁБЕР ---------- */
+CREATE EDGE TYPE PART_OF IF NOT EXISTS;      -- иерархия мест (child -PART_OF-> parent)
+CREATE EDGE TYPE HAS_TRIP IF NOT EXISTS;     -- место → поездки (МС trips)
+CREATE EDGE TYPE HAS_ARTICLE IF NOT EXISTS;  -- место → статьи /stati/ (МС article)
+CREATE EDGE TYPE HAS_MAP IF NOT EXISTS;      -- место → карты (МС maps)
+CREATE EDGE TYPE HAS_TYPE IF NOT EXISTS;     -- Dest -HAS_TYPE-> DestType (тип объекта: озеро, водопад…)
 
-/* ---------- DestType: каталог типов объектов (13.09.2026) ---------- */
-CREATE CLASS DestType EXTENDS V;
-CREATE PROPERTY DestType.slug STRING;            -- ключ-идентификатор (ozero, vodopad, …)
-CREATE PROPERTY DestType.name STRING;            -- название (Озеро)
-CREATE PROPERTY DestType.name_plural STRING;     -- множественное (Озёра)
-CREATE PROPERTY DestType.icon STRING;            -- имя иконки (для MapLibre symbol-слоя)
-CREATE PROPERTY DestType.slug_plural STRING;     -- URL-форма множественного: ozera, vodopady, gory…
-CREATE PROPERTY DestType.description STRING;     -- SEO-описание для страниц категорий
-CREATE PROPERTY DestType.priority DOUBLE;        -- порядок сортировки
-CREATE PROPERTY DestType.created DATETIME;       -- sysdate() при вставке
-CREATE INDEX DestType.slug_idx ON DestType (slug) NOTUNIQUE;
-
-/* ---------- slug_plural: URL-форма множественного числа          ----------
-   Для страниц категорий в URL: /gornyj-altaj/ozera/ (не /ozere/).
-   Добавлено 13.09.2026 как отдельное свойство (не генерируется,     ----------
-   так как транслитерация не всегда предсказуема).                    */
-
-/* ---------- Settings (необязательно, симметрия с article) ---------- */
--- CREATE VERTEX Settings SET microservice = 'destinations';
+/* ---------- DestType: каталог типов объектов ---------- */
+CREATE VERTEX TYPE DestType IF NOT EXISTS;
+ALTER TYPE DestType PROPERTY slug STRING;            -- ключ-идентификатор (ozero, vodopad, …)
+ALTER TYPE DestType PROPERTY name STRING;            -- название (Озеро)
+ALTER TYPE DestType PROPERTY name_plural STRING;     -- множественное (Озёра)
+ALTER TYPE DestType PROPERTY icon STRING;            -- имя иконки (для MapLibre symbol-слоя)
+ALTER TYPE DestType PROPERTY slug_plural STRING;     -- URL-форма множественного: ozera, vodopady, gory…
+ALTER TYPE DestType PROPERTY description STRING;     -- SEO-описание для страниц категорий
+ALTER TYPE DestType PROPERTY priority DOUBLE;        -- порядок сортировки
+ALTER TYPE DestType PROPERTY created DATETIME;       -- sysdate() при вставке
+CREATE INDEX IF NOT EXISTS ON DestType (slug) NOTUNIQUE;

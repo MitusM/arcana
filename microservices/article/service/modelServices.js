@@ -11,77 +11,59 @@ class Model extends PDO {
 
   async queryAll(query, params) {
     try {
-      const session = await this.pool.acquire()
-      const message = await session.query(query, params).all()
-      session.close()
-      return message
+      return await this.db.queryAll(query, params)
     } catch (err) {
-      console.log('⚡ err::PDO.queryAll => ModelService.js:19 ', err)
+      console.log('⚡ err::queryAll => ', err)
       process.exit()
     }
   }
 
   async queryOne(query, params) {
     try {
-      const session = await this.pool.acquire()
-      const message = await session.query(query, params).one()
-      session.close()
-      return message
+      return await this.db.queryOne(query, params)
     } catch (err) {
-      console.log('⚡ err::PDO.query => ', err)
+      console.log('⚡ err::queryOne => ', err)
       process.exit()
     }
   }
 
   async queryRid(query) {
     try {
-      const session = await this.pool.acquire()
-      const message = await session.query(query).one()
-      session.close()
-      return message
+      const res = await this.db.pool.query(query)
+      return res.rows[0] || null
     } catch (err) {
       return err
     }
   }
 
-  liveQuery(options) {}
-
-  async insert(query, json) {
+  async insert(query, params) {
     try {
-      const session = await this.pool.acquire()
-      const message = await session.command(query, json).one()
-      session.close()
-      return { message: message, type: 'insert', done: true }
+      const res = await this.db.command(query, params)
+      return { message: res, type: 'insert', done: true }
     } catch (err) {
-      console.log('⚡ err::PDO.insert => ', err)
+      console.log('⚡ err::insert => ', err)
       return { err: err, done: false }
     }
   }
 
   async create(edgeClass, from, to) {
     try {
-      const session = await this.pool.acquire()
-      const message = await session
-        .create('EDGE', edgeClass)
-        .from(from)
-        .to(to)
-        .one()
-      session.close()
-      return message
+      const res = await this.db.pool.query(
+        `CREATE EDGE ${edgeClass} FROM $1 TO $2`,
+        [from, to]
+      )
+      return res.rows[0] || null
     } catch (err) {
-      console.log('⚡ err::PDO.create => ', err)
+      console.log('⚡ err::create => ', err)
       process.exit()
     }
   }
 
-  async command(query) {
+  async command(query, params = []) {
     try {
-      const session = await this.pool.acquire()
-      const message = await session.command(query).all()
-      session.close()
-      return message
+      return await this.db.command(query, params)
     } catch (err) {
-      console.log('⚡ err::PDO.command => ', err)
+      console.log('⚡ err::command => ', err)
       return err
     }
   }
@@ -116,24 +98,17 @@ class Model extends PDO {
     return this.queryOne('SELECT * FROM Settings WHERE microservice="article"')
   }
 
-  /** Сохранить настройки МС article (UPSERT по полю microservice).
-   *  Возвращает { count } как от UPDATE UPSERT — обработчик ждёт count === 1.
-   *  Внимание: обёртка insert() вернула бы { message, type, done }, что ломает
-   *  проверку count — поэтому вызываем session.command напрямую. */
+  /** Сохранить настройки МС article (UPSERT по полю microservice). */
   async setSettings(obj) {
     try {
-      const session = await this.pool.acquire()
-      const message = await session
-        .command(
-          'UPDATE Settings SET settings=:settings, microservice="article", created=sysdate() UPSERT WHERE microservice="article"',
-          { params: { settings: obj } },
-        )
-        .one()
-      session.close()
-      return message
+      const res = await this.db.pool.query(
+        'UPDATE Settings SET settings=:settings, microservice="article", created=sysdate() UPSERT WHERE microservice="article"',
+        { params: { settings: obj } },
+      )
+      return res.rows[0] || null
     } catch (err) {
       console.log('⚡ err::Model.setSettings', err)
-      return { count: 0, err }
+      return null
     }
   }
 
@@ -144,7 +119,7 @@ class Model extends PDO {
     return this.insert(
       'INSERT INTO ' +
         table +
-        ' SET title=:title, country=:country, country_id=:country_id,img_upload=:img_upload, created=sysdate(), id=:id, content=:content, description=:description, url=:url, keyword=:keyword, searchable=:searchable, tags=:tags, config=:config, image=:image, main=:main, location=ST_GeomFromText("POINT(' +
+        ' SET title=:title, country=:country, country_id=:country_id,img_upload=:img_upload, created=sysdate(), id=:id, content=:content, description=:description, url=:url, keyword=:keyword, searchable=:searchable, tags=:tags, config=:config, image=:image, main=:main, location=geo.geomFromText("POINT(' +
         safeLoc +
         ')")',
       { params: { ...obj } },

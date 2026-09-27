@@ -1,62 +1,45 @@
 // === === === === === === === === === === === ===
-// dbServices.js — соединение с OrientDB для МС destinations
-// (тот же PDO-паттерн, что у article/maps/trips)
+// dbServices.js — соединение с ArcadeDB через Postgres Wire для МС destinations
 // === === === === === === === === === === === ===
-import OrientDB from 'orientjs';
-const OrientDBClient = OrientDB.OrientDBClient;
+import { PgDB } from '../../shared/db-pg.js'
 
 class PDO {
   constructor(options = {}) {
-    this.host = options.localhost || 'localhost';
-    this.port = options.port || 2424;
-    this.httpPort = options.httpPort || 2480;
+    this.host = options.host || 'localhost'
+    this.port = options.port || 5432
   }
 
-  // Экранировать строку для ИНЛАЙНА в SQL (orientjs в этом стеке не
-  // подставляет :named / ? — значения инлайнятся в текст запроса).
-  // Помимо одинарной кавычки обязательно обрабатываем обратный слэш и
-  // управляющие символы (\n, \r): иначе многострочный HTML из tinyMCE
-  // роняет запрос с `Lexical error ... Encountered "\n"`.
+  // Экранировать строку для ИНЛАЙНА в SQL (оставлено для обратной совместимости,
+  // но лучше использовать параметризованные запросы).
   _sqlStr(v) {
     if (v == null) return "''"
     const s = String(v)
-      .replace(/\\/g, '\\\\')   // \  → \\ (должно идти ПЕРВЫМ)
-      .replace(/'/g, "\\'")        // '  → \'
-      .replace(/\r/g, '\\r')       // CR → \r
-      .replace(/\n/g, '\\n')       // LF → \n
-      .replace(/\t/g, '\\t')       // TAB → \t
+      .replace(/\\/g, '\\\\')
+      .replace(/'/g, "\\'")
+      .replace(/\r/g, '\\r')
+      .replace(/\n/g, '\\n')
+      .replace(/\t/g, '\\t')
     return `'${s}'`
   }
 
   async connect(options) {
     try {
-      this.username = options.username;
-      this.password = options.password;
-      this.name = options.name;
-      this.options = options;
-
-      this.client = await OrientDBClient.connect({
-        host: this.host,
-        port: 2424,
-        pool: {
-          max: 10,
-        },
-      });
-
-      this.pool = await this.client.sessions({
-        name: this.options.name,
-        username: this.options.username,
-        password: this.options.password,
-        pool: {
-          max: 25,
-        },
-      });
-      console.log('🙏🏻 Connected (destinations)');
-      return this;
+      this.db = new PgDB({
+        host: options.host || 'localhost',
+        port: options.port || 5432,
+        username: options.username,
+        password: options.password,
+        name: options.name,
+        database: options.database || options.name,
+        pool: { max: options.pool?.max || 25 },
+      })
+      console.log('🙏🏻 Connected to ArcadeDB (destinations)')
+      return this
     } catch (err) {
-      console.log('⚡ err::PDO.connect', err);
+      console.log('⚡ err::PDO.connect', err)
+      throw err
     }
   }
 }
 
-export { PDO };
+export { PDO }

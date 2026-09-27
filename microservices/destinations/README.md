@@ -1,13 +1,13 @@
 # destinations — гео-каталог мест с типами DestType (cloudFRT)
 
-Микросервис `destinations`: SEO-структура сайта-каталога — гео-каталог мест (страны → регионы → места → достопримечательности) с иерархией в виде **графа OrientDB** и **типами объектов (DestType)** через ребро `HAS_TYPE`.
+Микросервис `destinations`: SEO-структура сайта-каталога — гео-каталог мест (страны → регионы → места → достопримечательности) с иерархией в виде **графа ArcadeDB** и **типами объектов (DestType)** через ребро `HAS_TYPE`.
 
 - **Шина:** микро­сервис cloudFRT на MicromQ (RabbitMQ), `name: 'destinations'`; зависимые МС: `render`, `files`, `auth`, `users`, `cache`, `maps`
-- **БД:** OrientDB 3.2.55 (граф: класс-вершина `Dest` + рёбра)
+- **БД:** ArcadeDB 26.9.1 (через Postgres Wire, драйвер `pg`)
 - **Кэш:** Redis (инвалидация страниц/настроек)
 - **Рендер:** Nunjucks через МС `render` (обёртка `index.html` + подключаемые страницы)
 
-> Развёрнут на прод-домене (полный прокси на gateway). См. `schema.sql` — правки схемы вручную, код БД не создаёт.
+> Проект arcana — форк cloudFRT. См. `schema.sql` — правки схемы вручную, код БД не создаёт.
 
 ---
 
@@ -16,7 +16,7 @@
 ```
 microservices/destinations/
 ├── index.js               — точка входа (MicroMQ, fail-fast по env)
-├── schema.sql             — ⚠️ схема OrientDB (грузится ВРУЧНУЮ, один раз)
+├── schema.sql             — ⚠️ схема ArcadeDB (грузится ВРУЧНУЮ, один раз)
 ├── package.json
 ├── .env / .env.example
 ├── action/index.js        — RPC-действия на шине
@@ -31,10 +31,10 @@ microservices/destinations/
 │       ├── category.html  —   страница категории по типу (добавлено 13.09.2026)
 │       └── admin.html     —   админ-UI (SPA CRUD)
 └── service/
-    ├── modelServices.js   — доступ к OrientDB (запросы, CreateVertex, рёбра)
+    ├── modelServices.js   — доступ к ArcadeDB через pg (запросы, CREATE VERTEX/EDGE)
     ├── validation.js      — централизованная валидация полей/координат
     ├── cacheServices.js   — Redis (ioredis)
-    ├── dbServices.js      — пул OrientDB (PDO)
+    ├── dbServices.js      — пул ArcadeDB через PgDB (shared/db-pg.js)
     ├── errorServices.js / error/
     ├── middlewares/index.js — auth/CSRF для админ-путей
     └── serviceLayer.js    — RPC-обёртка app.ask
@@ -42,11 +42,11 @@ microservices/destinations/
 
 ---
 
-## Структура БД (OrientDB 3.2.55)
+## Структура БД (ArcadeDB 26.9.1)
 
 Схема — **граф**: вершина `Dest` (узел места) и типизированные рёбра. Путь в URL = цепочка `PART_OF` от корня (страна) вниз.
 
-### Вершина `Dest` (extends V)
+### Вершина `Dest`
 
 | Свойство | Тип | Описание |
 |---|---|---|
@@ -55,15 +55,16 @@ microservices/destinations/
 | `h1` | STRING | H1 (если отличается от title) |
 | `level` | STRING | `country` \| `region` \| `place` \| `attraction` |
 | `description` | STRING | SEO description |
-| `content` | EMBEDDED | контент хаба (rich) |
+| `content` | STRING | контент хаба (HTML-строка) |
 | `image` | STRING | URL изображения |
 | `is_hub` | BOOLEAN | хаб или нет (default `true`) |
 | `priority` | DOUBLE | приоритет в sitemap (0..1) |
-| `location` | EMBEDDED | координаты — `ST_GeomFromText('POINT(lng lat)')` (порядок GeoJSON: [lng, lat]!) |
-| `created` | DATETIME | ⚠️ ТОЛЬКО через `toOrientDate()` (`'YYYY-MM-DD HH:mm:ss'`); ISO OrientDB не парсит |
-| `links` | EMBEDDEDMAP | ручные блоки перелинковки: `{ top_places:[{slug,title,url}], похожие:[...], где_жить:[...], тур:[...] }` |
+| `location` | STRING | координаты — WKT `"POINT(lng lat)"` через `geo.geomFromText()` |
+| `created` | DATETIME | |
+| `links` | STRING | ручные блоки перелинковки (JSON) |
+| `status` | STRING | `draft` \| `published` (default `draft`) |
 
-### Вершина `DestType` (extends V) — добавлено 12.09.2026
+### Вершина `DestType`
 
 Каталог типов объектов. Dest связывается с DestType через ребро `HAS_TYPE`.
 
@@ -102,11 +103,11 @@ microservices/destinations/
 
 ### ⚠️ Важные ограничения/нюансы
 
-1. **Схему грузит ТОЛЬКО `schema.sql` вручную** (OrientDB console), код выполняет только DML (`CREATE VERTEX`). Класс/свойства/индексы код не создаёт.
-2. **`IF NOT EXISTS` / `DEFAULT` внутри `CREATE PROPERTY` НЕ поддерживаются** в 3.2.55 → `DEFAULT` задаётся отдельной командой `ALTER PROPERTY`; повторный прогон выдаёт "already exists" (это норма).
-3. **`created`** — пишется через `toOrientDate()`, не ISO.
-4. **`location`** — `ST_GeomFromText('POINT(lng lat)')`, читается как `OPoint { coordinates: [lng, lat] }` (GeoJSON-порядок).
-5. Уникальность slug — на уровне поля (`NOTUNIQUE` индекс); уникальность **пути** (родитель+slug) на этапе 2 оценивалась, при необходимости пересмотреть.
+1. **Схему грузит ТОЛЬКО `schema.sql` вручную** (ArcadeDB Studio / HTTP API), код выполняет только DML (`CREATE VERTEX`). Класс/свойства/индексы код не создаёт.
+2. ArcadeDB поддерживает `IF NOT EXISTS`, скрипт можно прогонять повторно.
+3. **`created`** — формат DATETIME, ISO-строки работают.
+4. **`location`** — `geo.geomFromText('POINT(lng lat)')` (WKT строка), GEOSPATIAL индекс.
+5. Уникальность slug — на уровне поля (`NOTUNIQUE` индекс); уникальность **пути** (родитель+slug) при необходимости пересмотреть.
 
 ---
 
@@ -149,7 +150,7 @@ microservices/destinations/
 
 ## Модель (`modelServices.js`) — ключевые методы
 
-Данные (кроме явно публичных) обычно идут через публичные хендлеры; методы модели инкапсулируют граф-запросы OrientDB.
+Данные (кроме явно публичных) обычно идут через публичные хендлеры; методы модели инкапсулируют граф-запросы ArcadeDB.
 
 - `createDest({...})`, `updateDest(rid, fields)`, `deleteDest(rid)` — CRUD вершины
 - `getByRid(rid)`, `getBySlug(slug, parentRid)`, `slugExists(slug, parentRid)`
@@ -206,13 +207,13 @@ microservices/destinations/
 |---|---|
 | `RABBIT_URL` | шина RabbitMQ |
 | `TIMED_OUT` | таймаут RPC (мс), default 15000 |
-| `ORIENTDB_HOST/PORT/HTTPPORT/USERNAME/PASSWORD/NAME/POOL` | подключение к OrientDB |
+| `PG_HOST/PORT/DATABASE/USERNAME/PASSWORD/POOL` | подключение к ArcadeDB (Postgres Wire) |
 | `REDIS_PORT/HOST/FAMILY/PASSWORD` | Redis-кэш |
 | `APP_URL` | базовый URL (см. `.env`) |
 | `VIEW_DIR` | каталог шаблонов (`/microservices/destinations/view/html/`) |
 | `TEMPLATE_FILE` | основной layout (`index.html`) |
 
-**Fail-fast:** без обязательных env (`RABBIT_URL`, `ORIENTDB_NAME/USERNAME/PASSWORD`, `VIEW_DIR`) сервис стартует с ошибкой и exit.
+**Fail-fast:** без обязательных env (`RABBIT_URL`, `PG_DATABASE/USERNAME/PASSWORD`, `VIEW_DIR`) сервис стартует с ошибкой и exit.
 
 ---
 
@@ -230,20 +231,21 @@ microservices/destinations/
 
 ## Установка схемы (один раз)
 
+Через ArcadeDB Studio (http://localhost:2480) или HTTP API:
+
 ```bash
-cd <ORIENTDB_HOME>   # каталог установки OrientDB
-./bin/console.sh
-connect remote:127.0.0.1/<DBNAME> <USER> <PASSWORD>
-# вставить содержимое microservices/destinations/schema.sql
+# Пример: выполнить schema.sql через HTTP
+curl -u root:arcade4db -X POST "http://127.0.0.1:2480/api/v1/query/cloudFRT" \
+  -H "Content-Type: application/json" \
+  -d '{"language":"sql","command":"CREATE VERTEX TYPE Dest IF NOT EXISTS"}'
 ```
 
-Схема включает DestType + HAS_TYPE (добавлены 12-13.09.2026).
+Схема включает DestType + HAS_TYPE.
 
-После загрузки схемы — загрузить базовые 14 типов через OrientDB REST:
+После загрузки схемы — загрузить базовые 14 типов через ArcadeDB API:
 ```bash
-curl -X POST "http://localhost:2480/command/cloudFRT/sql" \
-  -u "misha:23502350" \
+curl -u root:arcade4db -X POST "http://127.0.0.1:2480/api/v1/query/cloudFRT" \
   -H "Content-Type: application/json" \
-  -d '{"command":"INSERT INTO DestType SET slug = 'ozero', slug_plural = 'ozera', name = 'Озеро', name_plural = 'Озёра', icon = 'lake'"}'
+  -d '{"language":"sql","command":"INSERT INTO DestType SET slug = 'ozero', slug_plural = 'ozera', name = 'Озеро', name_plural = 'Озёра', icon = 'lake'"}'
 # ... и т.д. для всех 14 типов
 ```

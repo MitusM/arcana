@@ -18,57 +18,41 @@ class Model extends PDO {
   }
 
   async queryAll(query, params) {
-    let session
     try {
-      session = await this.pool.acquire()
-      const message = await session.query(query, params).all()
-      session.close()
-      return message
+      const res = await this.db.pool.query(query, params || [])
+      return res.rows
     } catch (err) {
-      console.log('⚡ err::PDO.queryAll => ModelService.js ', err)
-      session?.close()
+      console.log('⚡ err::queryAll => ', err)
       return null
     }
   }
 
   async queryOne(query, params) {
-    let session
     try {
-      session = await this.pool.acquire()
-      const message = await session.query(query, params).one()
-      session.close()
-      return message
+      const res = await this.db.pool.query(query, params || [])
+      return res.rows[0] || null
     } catch (err) {
-      console.log('⚡ err::PDO.queryOne => ', err)
-      session?.close()
+      console.log('⚡ err::queryOne => ', err)
       return null
     }
   }
 
-  async command(query, params) {
-    let session
+  async command(query, params = []) {
     try {
-      session = await this.pool.acquire()
-      const message = await session.command(query, params).all()
-      session.close()
-      return message
+      const res = await this.db.pool.query(query, params)
+      return res.rows
     } catch (err) {
-      console.log('⚡ err::PDO.command => ', err)
-      session?.close()
+      console.log('⚡ err::command => ', err)
       return null
     }
   }
 
-  async insert(query, json) {
-    let session
+  async insert(query, params) {
     try {
-      session = await this.pool.acquire()
-      const message = await session.command(query, json).one()
-      session.close()
-      return { message: message, type: 'insert', done: true }
+      const res = await this.db.pool.query(query, params || [])
+      return { message: res.rows, type: 'insert', done: true }
     } catch (err) {
-      console.log('⚡ err::PDO.insert => ', err)
-      session?.close()
+      console.log('⚡ err::insert => ', err)
       return { err: err, done: false }
     }
   }
@@ -80,14 +64,11 @@ class Model extends PDO {
   //  Инфо по записи place_id (для get/dereg), или null
   async getPhotoMeta(placeId) {
     try {
-      const s = await this.pool.acquire()
-      const row = await s
-        .query('SELECT FROM PlacePhotoMeta WHERE place_id = :placeId LIMIT 1', {
-          params: { placeId },
-        })
-        .one()
-      s.close()
-      return row || null
+      const rows = await this.queryAll(
+        'SELECT FROM PlacePhotoMeta WHERE place_id = :placeId LIMIT 1',
+        { params: { placeId } },
+      )
+      return rows[0] || null
     } catch (err) {
       console.log('⚡ err::getPhotoMeta => ', err)
       return null
@@ -102,7 +83,6 @@ class Model extends PDO {
   }
 
   //  Upsert: положить/обновить инфо (fetched_at) — INSERT OR REPLACE-аналог.
-  //  Использует param-подстановку orientjs (безопасно от инъекций).
   async upsertPhotoMeta(placeId, { attribution = null, fetchedAt = Date.now(), errorAt = null } = {}) {
     // Проверяем существование
     const existing = await this.getPhotoMeta(placeId)

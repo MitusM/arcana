@@ -1,45 +1,32 @@
 // === === === === === === === === === === === ===
-//
+// dbServices.js — соединение с ArcadeDB через Postgres Wire
 // === === === === === === === === === === === ===
-import OrientDB from 'orientjs';
-const OrientDBClient = OrientDB.OrientDBClient;
+import { PgDB } from '../../shared/db-pg.js'
 
 class PDO {
   constructor(options = {}) {
-    this.host = options.localhost || 'localhost';
-    this.port = options.port || 2424;
-    this.httpPort = options.httpPort || 2480;
+    this.host = options.host || 'localhost'
+    this.port = options.port || 5432
   }
 
   async connect(options) {
     try {
-      this.username = options.username;
-      this.password = options.password;
-      this.name = options.name;
-      this.options = options;
-
-      this.client = await OrientDBClient.connect({
-        host: this.host,
-        port: 2424,
-        pool: {
-          max: 10,
-        },
-      });
-
-      this.pool = await this.client.sessions({
-        name: this.options.name,
-        username: this.options.username,
-        password: this.options.password,
-        pool: {
-          max: 25,
-        },
-      });
-      console.log('🙏🏻 Connected');
-      return this;
+      this.db = new PgDB({
+        host: options.host || 'localhost',
+        port: options.port || 5432,
+        username: options.username,
+        password: ***,
+        name: options.name,
+        database: options.database || options.name,
+        pool: { max: options.pool?.max || 25 },
+      })
+      console.log('🙏🏻 Connected to ArcadeDB')
+      return this
     } catch (err) {
-      console.log('⚡ err::PDO.connect', err);
+      console.log('⚡ err::PDO.connect', err)
+      throw err
     }
   }
 }
 
-export { PDO };
+export { PDO }

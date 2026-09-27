@@ -17,67 +17,56 @@ class Model extends PDO {
     super(options)
   }
 
-  // ---------- Базовые операции с OrientDB (как country/article) ----------
+  // ---------- Базовые операции с ArcadeDB (через pg) ----------
   async queryAll(query, params) {
     try {
-      const session = await this.pool.acquire()
-      const message = await session.query(query, params).all()
-      session.close()
-      return message
+      const res = await this.db.pool.query(query, params || [])
+      return res.rows
     } catch (err) {
-      console.log('⚡ err::PDO.queryAll => ModelService.js:19 ', err)
+      console.log('⚡ err::queryAll => ', err)
       process.exit()
     }
   }
 
   async queryOne(query, params) {
     try {
-      const session = await this.pool.acquire()
-      const message = await session.query(query, params).one()
-      session.close()
-      return message
+      const res = await this.db.pool.query(query, params || [])
+      return res.rows[0] || null
     } catch (err) {
-      console.log('⚡ err::PDO.query => ', err)
+      console.log('⚡ err::queryOne => ', err)
       process.exit()
     }
   }
 
-  async insert(query, json) {
+  async insert(query, params) {
     try {
-      const session = await this.pool.acquire()
-      const message = await session.command(query, json).one()
-      session.close()
-      return { message: message, type: 'insert', done: true }
+      const res = await this.db.pool.query(query, params || [])
+      return { message: res.rows, type: 'insert', done: true }
     } catch (err) {
-      console.log('⚡ err::PDO.insert => ', err)
+      console.log('⚡ err::insert => ', err)
       return { err: err, done: false }
     }
   }
 
   async create(edgeClass, from, to) {
     try {
-      const session = await this.pool.acquire()
-      const message = await session
-        .create('EDGE', edgeClass)
-        .from(from)
-        .to(to)
-        .one()
-      session.close()
-      return message
+      const res = await this.db.pool.query(
+        `CREATE EDGE ${edgeClass} FROM $1 TO $2`,
+        [from, to]
+      )
+      return res.rows[0] || null
     } catch (err) {
-      console.log('⚡ err::PDO.create => ', err)
+      console.log('⚡ err::create => ', err)
       process.exit()
     }
   }
 
-  async command(query) {
+  async command(query, params = []) {
     try {
-      const session = await this.pool.acquire()
-      const message = await session.command(query).all()
-      session.close()
-      return message
+      const res = await this.db.pool.query(query, params)
+      return res.rows
     } catch (err) {
-      console.log('⚡ err::PDO.command => ', err)
+      console.log('⚡ err::command => ', err)
       return err
     }
   }
@@ -112,7 +101,7 @@ class Model extends PDO {
     const embed = (v) => (v == null || v === '' ? 'null' : this._sqlStr(v))
 
     const loc = lat != null && lng != null
-      ? `ST_GeomFromText('POINT(${num(lng, 0)} ${num(lat, 0)})')`
+      ? `geo.geomFromText('POINT(${num(lng, 0)} ${num(lat, 0)})')`
       : null
     const locSql = loc ? `, location = ${loc}` : ''
 
@@ -209,7 +198,7 @@ class Model extends PDO {
 
     // координаты
     if (fields.lat != null && fields.lng != null) {
-      set.push(`location = ST_GeomFromText('POINT(${num(fields.lng)} ${num(fields.lat)})')`)
+      set.push(`location = geo.geomFromText('POINT(${num(fields.lng)} ${num(fields.lat)})')`) 
     }
 
     if (!set.length) return { done: true, updated: 0 }

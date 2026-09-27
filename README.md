@@ -1,8 +1,10 @@
-# cloudFRT
+# cloudFRT / arcana
 
-ESM-монорепо: **Gateway + RabbitMQ-микросервисы** (MicroMQ) + **OrientDB**.
+ESM-монорепо: **Gateway + RabbitMQ-микросервисы** (MicroMQ) + **ArcadeDB**.
 
-Стек: Node.js (ESM), RabbitMQ (amin's MicroMQ / `core/micromq`), OrientDB 3.x (графовая БД), Redis. Сервисы общаются по RPC-шине (RabbitMQ); HTTP-вход один — Gateway (порт `7606`).
+Стек: Node.js (ESM), RabbitMQ (amin's MicroMQ / `core/micromq`), ArcadeDB 26.x (графовая БД через Postgres Wire), Redis. Сервисы общаются по RPC-шине (RabbitMQ); HTTP-вход один — Gateway (порт `7606`).
+
+> Код: `/media/04E0AC01E0ABF6D8/arcana/` | Git: https://github.com/MitusM/arcana.git
 
 ## Архитектура
 
@@ -12,7 +14,8 @@ HTTP-клиент
    ▼
  Gateway (core/micromq) ── RabbitMQ ──▶ Микросервисы (RPC-консьюмеры)
    │  res.delegate(...)                    users, auth, render, article, trips,
-   │                       ◀─────── JSON   country, cache, maps, geo
+   │                       ◀─────── JSON   users, auth, render, article, trips,
+   │                                      destinations, cache, maps
    ▼
  клиент ← res.end(...)
 ```
@@ -29,10 +32,19 @@ HTTP-клиент
 | `render` | Рендер HTML |
 | `article` | Статьи |
 | `trips` | Агрегат поездок (Trip + TripMember + TripPlace) |
-| `country` | Страны |
+| `destinations` | Гео-каталог мест (страны → регионы → места) |
 | `cache` | Кэш |
 | `maps` | Визуальная карта (MapLibre GL) + гео |
-| `geo` | Гео-провайдер (опционально, нужен Postgres) |
+
+## База данных
+
+**ArcadeDB 26.9.1** — графовая БД через Postgres Wire.
+
+- **Протокол:** Postgres Wire (`:5432`) через `pg` (node-postgres)
+- **HTTP API:** `:2480` (Studio, REST)
+- **Пароль root:** `arcade4db`
+- **БД:** `cloudFRT`
+- **Драйвер:** `pg` — общая обёртка в `shared/db-pg.js`
 
 ## Карта (МС maps)
 
@@ -40,21 +52,14 @@ HTTP-клиент
 
 Публичные эндпоинты: `/maps/map`, `/maps/geocode`, `/maps/pois`, `/maps/og`.
 
-### Экспорт карты в PNG (клиентский)
-Кнопка «Скачать карту как PNG» (📥) в тулбаре карты — модалка с превью, экспорт через плагин `maplibre-gl-map-to-image` (CDN). Опция отключения — `export: false` в `MapsRender.createMap`.
-
 ### OG-превью поездки (серверный рендер)
-При шеринге ссылки на поездку соцсети показывают карту поездки с маркерами (1200×630):
-
 - `trips GET /trips/:id/og-image` — грузит поездку + места → RPC `maps:og` → PNG.
-- `maps:og` / `microservices/maps/service/ogExport.js` — рендер во **headless Chromium** (Playwright), та же точка рендера `renderMapHtml`, что и у пользователя → картинка 1:1.
-- OG-мета-теги (`og:image`, `twitter:card`) в `<head>` страницы поездки, URL публичный из `x-forwarded-proto`/`host`.
-- `/trips/map` и `/trips/:id/og-image` открыты анонимно (защита на `canRead`: приватая поездка → 403).
-- **Кэш**: `trips/service/ogCache.js` → `cloudFRT/og-cache/<tripId>.png`, TTL 7 дней + инвалидация при изменении трипа/мест. Холодный рендер ~7–28 с, из кэша — миллисекунды.
-
-*Playwright установлен отдельно: `npm i playwright --no-save` + `npx playwright install chromium`. Зависимость осознанно не в `package.json` (нужна только там, где включён ОG-рендер).*
+- `maps:og` / `microservices/maps/service/ogExport.js` — рендер во **headless Chromium** (Playwright), та же точка рендера `renderMapHtml`.
+- **Кэш**: `trips/service/ogCache.js` → `cloudFRT/og-cache/<tripId>.png`, TTL 7 дней.
 
 ## Запуск
 
-- Скрипт подъёма стека: `scripts/start-cloudfrt.sh` (Redis / RabbitMQ / OrientDB + Gateway и микросервисы через nodemon).
-- Переменные окружения — в `.env` (OrientDB, Redis, таймаут Gateway `TIMED_OUT`).
+- Скрипт подъёма стека: `/media/04E0AC01E0ABF6D8/agent/tim/scripts/start-arcana.sh`
+  (Redis / RabbitMQ / ArcadeDB + Gateway + микросервисы через nodemon).
+- Переменные окружения — в `.env` каждого МС (PG_HOST/PORT/DATABASE/USERNAME/PASSWORD, Redis, таймаут RPC).
+- Для прод-режима: `DEV_MODE=0 ./start-arcana.sh`

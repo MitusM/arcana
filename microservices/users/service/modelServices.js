@@ -12,77 +12,59 @@ class UserModel extends PDO {
 
   async queryAll(query, params) {
     try {
-      const session = await this.pool.acquire()
-      const message = await session.query(query, params).all()
-      session.close()
-      return message
+      return await this.db.queryAll(query, params)
     } catch (err) {
-      console.log('⚡ err::PDO.queryAll => ', err)
+      console.log('⚡ err::queryAll => ', err)
       process.exit()
     }
   }
 
   async queryOne(query, params) {
     try {
-      const session = await this.pool.acquire()
-      const message = await session.query(query, params).one()
-      session.close()
-      return message
+      return await this.db.queryOne(query, params)
     } catch (err) {
-      console.log('⚡ err::PDO.query => ', err)
+      console.log('⚡ err::queryOne => ', err)
       process.exit()
     }
   }
 
   async queryRid(query) {
     try {
-      const session = await this.pool.acquire()
-      const message = await session.query(query).one()
-      session.close()
-      return message
+      const res = await this.db.pool.query(query)
+      return res.rows[0] || null
     } catch (err) {
       return err
     }
   }
 
-  liveQuery(options) {}
-
-  async insert(query, json) {
+  async insert(query, params) {
     try {
-      const session = await this.pool.acquire()
-      const message = await session.command(query, json).one()
-      session.close()
-      return message
+      const res = await this.db.command(query, params)
+      return res
     } catch (err) {
-      console.log('⚡ err::PDO.insert => ', err)
+      console.log('⚡ err::insert => ', err)
       return err
     }
   }
 
   async create(edgeClass, from, to) {
     try {
-      const session = await this.pool.acquire()
-      const message = await session
-        .create('EDGE', edgeClass)
-        .from(from)
-        .to(to)
-        .one()
-      session.close()
-      return message
+      const res = await this.db.pool.query(
+        `CREATE EDGE ${edgeClass} FROM $1 TO $2`,
+        [from, to]
+      )
+      return res.rows[0] || null
     } catch (err) {
-      console.log('⚡ err::PDO.create => ', err)
+      console.log('⚡ err::create => ', err)
       process.exit()
     }
   }
 
-  async command(query) {
+  async command(query, params = []) {
     try {
-      const session = await this.pool.acquire()
-      const message = await session.command(query).all()
-      session.close()
-      return message
+      return await this.db.command(query, params)
     } catch (err) {
-      console.log('⚡ err::PDO.command => ', err)
+      console.log('⚡ err::command => ', err)
       return err
     }
   }
@@ -174,13 +156,7 @@ class UserModel extends PDO {
 
   async deleteUser(rid) {
     try {
-      const session = await this.pool.acquire()
-      const message = await session
-        .delete('VERTEX', 'User')
-        .where('@rid = ' + rid)
-        .one()
-      session.close()
-      return message
+      return await this.command('DELETE VERTEX User WHERE @rid = $1', [rid])
     } catch (err) {
       console.log('⚡ err::deleteUser => ', err)
       return err
@@ -214,24 +190,17 @@ class UserModel extends PDO {
     return this.queryOne('SELECT * FROM Settings WHERE microservice="users"')
   }
 
-  /** Сохранить настройки МС users (UPSERT по полю microservice).
-   *  Возвращает { count } как от UPDATE UPSERT — обработчик ждёт count === 1.
-   *  Внимание: обёртка insert() вернула бы { message, type, done }, что ломает
-   *  проверку count — поэтому вызываем session.command напрямую. */
+  /** Сохранить настройки МС users (UPSERT по полю microservice). */
   async setSettings(obj) {
     try {
-      const session = await this.pool.acquire()
-      const message = await session
-        .command(
-          'UPDATE Settings SET settings=:settings, microservice="users", created=sysdate() UPSERT WHERE microservice="users"',
-          { params: { settings: obj } },
-        )
-        .one()
-      session.close()
-      return message
+      const res = await this.db.pool.query(
+        'UPDATE Settings SET settings=:settings, microservice="users", created=sysdate() UPSERT WHERE microservice="users"',
+        { params: { settings: obj } },
+      )
+      return res.rows[0] || null
     } catch (err) {
       console.log('⚡ err::Model.setSettings', err)
-      return { count: 0, err }
+      return null
     }
   }
 }

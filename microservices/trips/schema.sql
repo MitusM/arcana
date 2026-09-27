@@ -1,5 +1,5 @@
 -- ============================================================================
--- schema.sql — схема OrientDB для микросервиса trips (cloudFRT)
+-- schema.sql — схема ArcadeDB для микросервиса trips (arcana)
 --
 -- Ядро trips: 3 вершины (Trip, Place, GeoObject) + 3 ребра
 --             (TripMember, TripPlace, hasObject).
@@ -8,89 +8,73 @@
 --  1. Код trips НЕ создаёт схему автоматически (только DML — CREATE
 --     VERTEX/EDGE). Классы/свойства/индексы заводятся этим скриптом ВРУЧНУЮ.
 --  2. Выполнять ОДИН РАЗ на чистой БД (или на пустой схеме trips).
---  3. OrientDB 3.2.55 напрямую НЕ поддерживает:
---     - IF NOT EXISTS для CREATE CLASS/PROPERTY -> "Error parsing query"
---     - DEFAULT внутри CREATE PROPERTY -> "Error parsing query"
---     Поэтому DEFAULT задаётся отдельной командой ALTER PROPERTY, а повторный
---     прогон даёт "already exists" — это норма, console продолжает.
+--  3. ArcadeDB поддерживает IF NOT EXISTS — скрипт можно прогонять повторно.
 --
--- Выполнить через OrientDB console:
---   cd /media/04E0AC01E0ABF6D8/orientdb-community-3.2.55
---   ./bin/console.sh
---   connect remote:127.0.0.1/cloudFRT misha <PASSWORD>
---   (вставить содержимое schema.sql)
---
--- Источник/актуализация: work/trek-cloudfrt-схема-orientdb-trips.md (агент Тима)
+-- Выполнить через ArcadeDB Studio (http://localhost:2480) или HTTP API.
 -- ============================================================================
 
 /* ---------- ВЕРШИНА Trip: поездка ---------- */
-CREATE CLASS Trip EXTENDS V;
-CREATE PROPERTY Trip.title STRING;
-CREATE PROPERTY Trip.description STRING;
-CREATE PROPERTY Trip.start_date STRING;          -- ISO yyyy-mm-dd (как TREK)
-CREATE PROPERTY Trip.end_date STRING;
-CREATE PROPERTY Trip.currency STRING;
-CREATE PROPERTY Trip.cover_image STRING;
-CREATE PROPERTY Trip.is_archived BOOLEAN;
-CREATE PROPERTY Trip.reminder_days INTEGER;
-CREATE PROPERTY Trip.is_private BOOLEAN;      -- true=частная (видит только владелец+участники), false=публичная
-CREATE PROPERTY Trip.status STRING;           -- open|closed (open — идёт формирование, можно добавлять места)
-ALTER PROPERTY Trip.currency DEFAULT "EUR";
-ALTER PROPERTY Trip.is_archived DEFAULT false;
-ALTER PROPERTY Trip.reminder_days DEFAULT 3;
-ALTER PROPERTY Trip.is_private DEFAULT true;
-ALTER PROPERTY Trip.status DEFAULT "open";
-CREATE PROPERTY Trip.owner STRING;               -- стабильный _id владельца
-CREATE PROPERTY Trip.ownerRid STRING;            -- RID владельца, напр. '#22:0'
-CREATE PROPERTY Trip.created_at DATETIME;
-CREATE PROPERTY Trip.updated_at DATETIME;
-CREATE INDEX Trip.ownerRid ON Trip (ownerRid) NOTUNIQUE;
+CREATE VERTEX TYPE Trip IF NOT EXISTS;
+ALTER TYPE Trip PROPERTY title STRING;
+ALTER TYPE Trip PROPERTY description STRING;
+ALTER TYPE Trip PROPERTY start_date STRING;          -- ISO yyyy-mm-dd
+ALTER TYPE Trip PROPERTY end_date STRING;
+ALTER TYPE Trip PROPERTY currency STRING DEFAULT 'EUR';
+ALTER TYPE Trip PROPERTY cover_image STRING;
+ALTER TYPE Trip PROPERTY is_archived BOOLEAN DEFAULT false;
+ALTER TYPE Trip PROPERTY reminder_days INTEGER DEFAULT 3;
+ALTER TYPE Trip PROPERTY is_private BOOLEAN DEFAULT true;
+ALTER TYPE Trip PROPERTY status STRING DEFAULT 'open';  -- open|closed
+ALTER TYPE Trip PROPERTY owner STRING;               -- стабильный _id владельца
+ALTER TYPE Trip PROPERTY ownerRid STRING;            -- RID владельца, напр. '#22:0'
+ALTER TYPE Trip PROPERTY created_at DATETIME;
+ALTER TYPE Trip PROPERTY updated_at DATETIME;
+CREATE INDEX IF NOT EXISTS ON Trip (ownerRid) NOTUNIQUE;
 
 /* ---------- ВЕРШИНА Place: снапшот места ---------- */
-CREATE CLASS Place EXTENDS V;
-CREATE PROPERTY Place.name STRING;
-CREATE PROPERTY Place.description STRING;
-CREATE PROPERTY Place.address STRING;
-CREATE PROPERTY Place.lat DOUBLE;
-CREATE PROPERTY Place.lng DOUBLE;
-CREATE PROPERTY Place.osm_id STRING;
-CREATE PROPERTY Place.google_place_id STRING;
-CREATE PROPERTY Place.google_ftid STRING;
-CREATE PROPERTY Place.source STRING;             -- osm | google
-CREATE PROPERTY Place.url STRING;
-CREATE PROPERTY Place._id STRING;                -- стабильный nanoid(21), пишет код
-CREATE PROPERTY Place.created_at DATETIME;
+CREATE VERTEX TYPE Place IF NOT EXISTS;
+ALTER TYPE Place PROPERTY name STRING;
+ALTER TYPE Place PROPERTY description STRING;
+ALTER TYPE Place PROPERTY address STRING;
+ALTER TYPE Place PROPERTY lat DOUBLE;
+ALTER TYPE Place PROPERTY lng DOUBLE;
+ALTER TYPE Place PROPERTY osm_id STRING;
+ALTER TYPE Place PROPERTY google_place_id STRING;
+ALTER TYPE Place PROPERTY google_ftid STRING;
+ALTER TYPE Place PROPERTY source STRING;             -- osm | google
+ALTER TYPE Place PROPERTY url STRING;
+ALTER TYPE Place PROPERTY _id STRING;                -- стабильный nanoid(21), пишет код
+ALTER TYPE Place PROPERTY created_at DATETIME;
 
 /* ---------- ВЕРШИНА GeoObject: канонический эталон места ---------- */
-CREATE CLASS GeoObject EXTENDS V;
-CREATE PROPERTY GeoObject.name STRING;
-CREATE PROPERTY GeoObject.lat DOUBLE;
-CREATE PROPERTY GeoObject.lng DOUBLE;
-CREATE PROPERTY GeoObject.osm_id STRING;
-CREATE PROPERTY GeoObject.google_place_id STRING;
-CREATE PROPERTY GeoObject.google_ftid STRING;
-CREATE PROPERTY GeoObject.source STRING;
-CREATE PROPERTY GeoObject.created_at DATETIME;   -- ТОЛЬКО toOrientDate(), не ISO
-CREATE INDEX GeoObject.osm_id ON GeoObject (osm_id) NOTUNIQUE;
-CREATE INDEX GeoObject.name_lat_lng ON GeoObject (name, lat, lng) NOTUNIQUE;
+CREATE VERTEX TYPE GeoObject IF NOT EXISTS;
+ALTER TYPE GeoObject PROPERTY name STRING;
+ALTER TYPE GeoObject PROPERTY lat DOUBLE;
+ALTER TYPE GeoObject PROPERTY lng DOUBLE;
+ALTER TYPE GeoObject PROPERTY osm_id STRING;
+ALTER TYPE GeoObject PROPERTY google_place_id STRING;
+ALTER TYPE GeoObject PROPERTY google_ftid STRING;
+ALTER TYPE GeoObject PROPERTY source STRING;
+ALTER TYPE GeoObject PROPERTY created_at DATETIME;
+CREATE INDEX IF NOT EXISTS ON GeoObject (osm_id) NOTUNIQUE;
+CREATE INDEX IF NOT EXISTS ON GeoObject (name, lat, lng) NOTUNIQUE;
 
 /* ---------- РЕБРО TripMember: Trip -[участвует]-> User ---------- */
-CREATE CLASS TripMember EXTENDS E;
-CREATE PROPERTY TripMember.is_guest BOOLEAN;
-ALTER PROPERTY TripMember.is_guest DEFAULT false;
-CREATE PROPERTY TripMember.role STRING;          -- owner/member/guest
-CREATE PROPERTY TripMember.invited_by STRING;    -- _id пригласившего
-CREATE PROPERTY TripMember.added_at DATETIME;
+CREATE EDGE TYPE TripMember IF NOT EXISTS;
+ALTER TYPE TripMember PROPERTY is_guest BOOLEAN DEFAULT false;
+ALTER TYPE TripMember PROPERTY role STRING;          -- owner/member/guest
+ALTER TYPE TripMember PROPERTY invited_by STRING;    -- _id пригласившего
+ALTER TYPE TripMember PROPERTY added_at DATETIME;
 
 /* ---------- РЕБРО TripPlace: Trip -[место]-> Place ---------- */
-CREATE CLASS TripPlace EXTENDS E;
-CREATE PROPERTY TripPlace.added_at DATETIME;
-CREATE PROPERTY TripPlace.added_by STRING;       -- _id добавившего
-CREATE PROPERTY TripPlace.day STRING;            -- день поездки
-CREATE PROPERTY TripPlace.note STRING;           -- заметка пользователя
-CREATE PROPERTY TripPlace.article_id INTEGER;    -- стабильный Article.id (B+C)
-CREATE PROPERTY TripPlace.article_rid STRING;    -- RID статьи '#X:Y' (B+C)
-CREATE INDEX TripPlace.article_rid ON TripPlace (article_rid) NOTUNIQUE;
+CREATE EDGE TYPE TripPlace IF NOT EXISTS;
+ALTER TYPE TripPlace PROPERTY added_at DATETIME;
+ALTER TYPE TripPlace PROPERTY added_by STRING;       -- _id добавившего
+ALTER TYPE TripPlace PROPERTY day STRING;            -- день поездки
+ALTER TYPE TripPlace PROPERTY note STRING;           -- заметка пользователя
+ALTER TYPE TripPlace PROPERTY article_id INTEGER;    -- стабильный Article.id (B+C)
+ALTER TYPE TripPlace PROPERTY article_rid STRING;    -- RID статьи '#X:Y' (B+C)
+CREATE INDEX IF NOT EXISTS ON TripPlace (article_rid) NOTUNIQUE;
 
 /* ---------- РЕБРО hasObject: Place -[связан]-> GeoObject ---------- */
-CREATE CLASS hasObject EXTENDS E;
+CREATE EDGE TYPE hasObject IF NOT EXISTS;

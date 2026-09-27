@@ -21,9 +21,9 @@ dotenv.config()
 // === === === === === === === === === === === ===
 const REQUIRED_ENV = [
   'RABBIT_URL',
-  'ORIENTDB_NAME',
-  'ORIENTDB_USERNAME',
-  'ORIENTDB_PASSWORD',
+  'PG_DATABASE',
+  'PG_USERNAME',
+  'PG_PASSWORD',
   'VIEW_DIR',
 ]
 const missing = REQUIRED_ENV.filter((k) => !process.env[k])
@@ -52,9 +52,12 @@ const app = new MicroMQ({
     timeout: timeout,
   },
   db: await new UserModel().connect({
-    name: process.env.ORIENTDB_NAME,
-    username: process.env.ORIENTDB_USERNAME,
-    password: process.env.ORIENTDB_PASSWORD,
+    host: process.env.PG_HOST || 'localhost',
+    port: parseInt(process.env.PG_PORT || '5432'),
+    name: process.env.PG_DATABASE,
+    username: process.env.PG_USERNAME,
+    password: process.env.PG_PASSWORD,
+    pool: { max: parseInt(process.env.PG_POOL || '25') },
   }),
 })
 
