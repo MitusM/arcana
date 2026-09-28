@@ -101,7 +101,7 @@ class Model extends PDO {
     const embed = (v) => (v == null || v === '' ? 'null' : this._sqlStr(v))
 
     const loc = lat != null && lng != null
-      ? `geo.geomFromText('POINT(${num(lng, 0)} ${num(lat, 0)})')`
+      ? `{'@type':'OPoint','coordinates':[${num(lng, 0)},${num(lat, 0)}]}`
       : null
     const locSql = loc ? `, location = ${loc}` : ''
 
@@ -201,9 +201,9 @@ class Model extends PDO {
       }
     }
 
-    // координаты
+    // координаты — ArcadeDB PG Wire: объектный литерал вместо geo.geomFromText
     if (fields.lat != null && fields.lng != null) {
-      set.push(`location = geo.geomFromText('POINT(${num(fields.lng)} ${num(fields.lat)})')`) 
+      set.push(`location = {'@type':'OPoint','coordinates':[${num(fields.lng)},${num(fields.lat)}]}`)
     }
 
     if (!set.length) return { done: true, updated: 0 }
@@ -234,9 +234,17 @@ class Model extends PDO {
   }
 
   // --- Сменить родителя: удалить старые PART_OF из узла, добавить новое ---
+  //
+  // ВАЖНО (ArcadeDB PG Wire): DELETE EDGE не парсится. Удаляем ребро как запись.
+  // SELECT @rid FROM PART_OF WHERE out = X → DELETE FROM <rid>
   async moveDest(rid, newParentRid) {
-    // удалить все текущие рёбра PART_OF, где rid — исходящий (ребёнок)
-    await this.command(`DELETE EDGE PART_OF WHERE out = ${rid}`)
+    // найти все рёбра PART_OF, где rid — исходящий (ребёнок)
+    const edges = await this.queryAll(
+      `SELECT @rid as rid FROM PART_OF WHERE out = ${rid}`
+    )
+    for (const e of edges || []) {
+      if (e && e.rid) await this.command(`DELETE FROM ${e.rid}`)
+    }
     if (newParentRid) {
       await this.create('PART_OF', rid, newParentRid)
     }
