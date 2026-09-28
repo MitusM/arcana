@@ -144,13 +144,18 @@ class Model extends PDO {
     return this.queryOne(`SELECT *, @rid as rid FROM ${rid}`)
   }
 
-  /** Родитель узла (первый по out('PART_OF')) или null. Используется админ-UI. */
+  /** Родитель узла (первый по out('PART_OF')) или null. Используется админ-UI.
+   *
+   * ВАЖНО (ArcadeDB PG Wire): out('PART_OF') возвращает Java-объект-строку
+   * (com.arcadedb.graph.GraphEngine$...), а не массив RID'ов. Используем
+   * out('PART_OF').@rid — он отдаёт массив RID-строк, который pg драйвер
+   * парсит корректно. */
   async getParentRid(rid) {
     const row = await this.queryOne(
-      `SELECT out('PART_OF') as parents FROM ${rid} WHERE out('PART_OF').size() > 0`
+      `SELECT out('PART_OF').@rid as parents FROM ${rid} WHERE out('PART_OF').size() > 0`
     )
     const p = row && row.parents
-    if (Array.isArray(p) && p.length) return String(p[0]['@rid'] || p[0])
+    if (Array.isArray(p) && p.length) return String(p[0])
     return null
   }
 
@@ -387,16 +392,19 @@ class Model extends PDO {
   // «Похожие места»: братья по дереву (same parent). Для достопримечательности -
   // другие достопримечательности того же родителя.
   // Двухшагово (IN с коллекцией слева не парсится): получить родителя → дети родителя.
+  //
+  // ВАЖНО (ArcadeDB PG Wire): out('PART_OF') возвращает Java-объект-строку.
+  // Используем .@rid — он отдаёт массив RID-строк.
   async getSiblings(rid, limit = 8) {
     const lim = parseInt(limit, 10) || 8
-    const parentRow = await this.queryOne(`SELECT out('PART_OF') AS p FROM ${rid}`)
+    const parentRow = await this.queryOne(`SELECT out('PART_OF').@rid AS p FROM ${rid}`)
     const parents = (parentRow && parentRow.p) || []
     if (!parents.length) return []
     // берём родителей (обычно один), для каждого собираем детей
     const parentsList = Array.isArray(parents) ? parents : [parents]
     const out = await this.queryAll(
       `SELECT @rid as rid, slug, title, h1, level, image, priority, status, content FROM Dest
-       WHERE ${parentsList.map((p) => `${p['@rid'] || p} IN out('PART_OF')`).join(' OR ')}
+       WHERE ${parentsList.map((p) => `'${p}' IN out('PART_OF')`).join(' OR ')}
          AND @rid <> ${rid} AND status = 'published'
        ORDER BY priority DESC LIMIT ${lim}`
     )
@@ -708,10 +716,10 @@ class Model extends PDO {
     )
     if (!typeRow || !typeRow.typeRid) return []
     const typeRid = Array.isArray(typeRow.typeRid) ? typeRow.typeRid[0] : typeRow.typeRid
-    const parentRow = await this.queryOne(`SELECT out('PART_OF') AS p FROM ${destRid}`)
+    const parentRow = await this.queryOne(`SELECT out('PART_OF').@rid AS p FROM ${destRid}`)
     const parents = (parentRow && parentRow.p) || []
     if (!parents.length) return []
-    const parentClause = parents.map((p) => `${p['@rid'] || p} IN out('PART_OF')`).join(' OR ')
+    const parentClause = parents.map((p) => `'${p}' IN out('PART_OF')`).join(' OR ')
     return this.queryAll(
       `SELECT @rid as rid, slug, title, h1, level, image, priority, status, content FROM Dest
        WHERE (${parentClause}) AND @rid <> ${destRid} AND status = 'published'

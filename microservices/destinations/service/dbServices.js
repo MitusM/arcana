@@ -1,7 +1,7 @@
 // === === === === === === === === === === === ===
 // dbServices.js — соединение с ArcadeDB через Postgres Wire для МС destinations
 // === === === === === === === === === === === ===
-import { PgDB } from '../../shared/db-pg.js'
+import { PgDB } from '../../../shared/db-pg.js'
 
 class PDO {
   constructor(options = {}) {

@@ -15,7 +15,7 @@ class PgDB {
       host: config.host || 'localhost',
       port: config.port || 5432,
       user: config.username,
-      password: ***,
+      password: config.password,
       database: config.name || config.database,
       max: config.pool?.max || 25,
     })

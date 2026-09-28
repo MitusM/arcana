@@ -1,7 +1,7 @@
 // === === === === === === === === === === === ===
 // dbServices.js — соединение с ArcadeDB через Postgres Wire
 // === === === === === === === === === === === ===
-import { PgDB } from '../../shared/db-pg.js'
+import { PgDB } from '../../../shared/db-pg.js'
 
 class PDO {
   constructor(options = {}) {
@@ -15,7 +15,7 @@ class PDO {
         host: options.host || 'localhost',
         port: options.port || 5432,
         username: options.username,
-        password: ***,
+        password: options.password,
         name: options.name,
         database: options.database || options.name,
         pool: { max: options.pool?.max || 25 },
