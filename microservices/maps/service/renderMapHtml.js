@@ -2440,6 +2440,13 @@ function renderMapHtml(opts = {}) {
                       center: center,
                       place_name: place_name,
                       text: p.name || '',
+                      // поля Dest (кураторский каталог) — передаются как есть
+                      slug: p.slug || '',
+                      summary: p.summary || '',
+                      thumbnail: p.thumbnail || '',
+                      typeName: p.typeName || null,
+                      typeSlug: p.typeSlug || null,
+                      destSlug: p.destSlug || '',
                     },
                   };
                 }),
