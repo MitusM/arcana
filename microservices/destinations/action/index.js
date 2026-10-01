@@ -22,25 +22,38 @@ const action = async (app) => {
       }
       const db = await app.options.db
       const esc = (s) => String(s).replace(/'/g, "\\'")
-      const like = `%${esc(query.trim()).toLowerCase()}%`
+      const like = `%${esc(query.trim())}%`
       const maxLimit = Math.min(parseInt(limit) || 8, 20)
 
       // ищем по Dest: только опубликованные, с координатами
+      // ILIKE — ArcadeDB PG Wire LIKE регистрозависим, ILIKE нет
       const rows = await db.queryAll(
-        `SELECT title, description, level, slug, image,
+        `SELECT @rid AS rid, title, description, level, slug, image,
                 summary, thumbnail,
                 location.coordinates[0] AS lng, location.coordinates[1] AS lat,
                 out('HAS_TYPE').name AS typeName, out('HAS_TYPE').slug AS typeSlug
          FROM Dest
          WHERE status = 'published' AND location IS NOT NULL
-           AND title LIKE '${like}'
+           AND title ILIKE '${like}'
          ORDER BY priority DESC
          LIMIT ${maxLimit}`
       )
 
-      const places = (rows || [])
-        .filter((r) => r.lat != null && r.lng != null)
-        .map((r) => ({
+      const filtered = (rows || []).filter((r) => r.lat != null && r.lng != null)
+
+      // Собираем fullSlug (полный путь от корня: russia/gornyj-altaj/teleckoe-ozero)
+      // через parentsChain для каждого результата. N до 20 — норм.
+      for (const r of filtered) {
+        try {
+          const chain = r.rid ? await db.parentsChain(r.rid) : []
+          const pathSlugs = (chain || []).map(c => c.slug).reverse()
+          r.fullSlug = pathSlugs.join('/')
+        } catch (_) {
+          r.fullSlug = r.slug || ''
+        }
+      }
+
+      const places = filtered.map((r) => ({
           name: r.title || '',
           address: r.description || '',
           lat: Number(r.lat),
@@ -52,6 +65,7 @@ const action = async (app) => {
           image: r.image || '',
           summary: r.summary || '',
           thumbnail: r.thumbnail || '',
+          fullSlug: r.fullSlug || r.slug || '',
           source: 'destinations',
         }))
 

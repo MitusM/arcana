@@ -186,6 +186,7 @@ const endpoints = async (app) => {
             typeName: p.typeName || null,
             typeSlug: p.typeSlug || null,
             destSlug: p.slug || '',
+            fullSlug: p.fullSlug || p.slug || '',
             center: [Number(p.lng), Number(p.lat)],
           },
         }))
