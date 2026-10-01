@@ -483,8 +483,8 @@ export async function searchSearchPlace(db, query, lang) {
   if (db) {
     try {
       local = await db.queryAll(
-        'SELECT FROM SearchPlace WHERE searchable = true AND name LIKE :term LIMIT :limit',
-        { params: { term: '%' + String(query).toLowerCase() + '%', limit: LIMIT } },
+        'SELECT FROM SearchPlace WHERE searchable = true AND name ILIKE :term LIMIT ' + LIMIT,
+        { params: { term: '%' + String(query).toLowerCase() + '%' } },
       )
       local = (local || []).map((p) => ({
         id: String(p['@rid']),

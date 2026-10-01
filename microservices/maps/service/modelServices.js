@@ -1,16 +1,12 @@
 // === === === === === === === === === === === ===
+// modelServices.js — модели данных maps (через PgDB)
 //
+// Все методы делегируют в PgDB-обёртку (shared/db-pg.js), которая
+// корректно обрабатывает как позиционные ($1, $2), так и именованные
+// (:param → $N) параметры.
 // === === === === === === === === === === === ===
 
 import { PDO } from './dbServices.js'
-
-// OrientDB DATETIME требует 'YYYY-MM-DD HH:mm:ss' (local UTC) — ISO не парсит.
-function toOrientDate(value) {
-  if (!value) return value
-  const d = value instanceof Date ? value : new Date(value)
-  if (Number.isNaN(d.getTime())) return value
-  return d.toISOString().replace('T', ' ').slice(0, 19)
-}
 
 class Model extends PDO {
   constructor(options) {
@@ -19,8 +15,7 @@ class Model extends PDO {
 
   async queryAll(query, params) {
     try {
-      const res = await this.db.pool.query(query, params || [])
-      return res.rows
+      return await this.db.queryAll(query, params || [])
     } catch (err) {
       console.log('⚡ err::queryAll => ', err)
       return null
@@ -29,8 +24,7 @@ class Model extends PDO {
 
   async queryOne(query, params) {
     try {
-      const res = await this.db.pool.query(query, params || [])
-      return res.rows[0] || null
+      return await this.db.queryOne(query, params || [])
     } catch (err) {
       console.log('⚡ err::queryOne => ', err)
       return null
@@ -39,8 +33,7 @@ class Model extends PDO {
 
   async command(query, params = []) {
     try {
-      const res = await this.db.pool.query(query, params)
-      return res.rows
+      return await this.db.command(query, params)
     } catch (err) {
       console.log('⚡ err::command => ', err)
       return null
@@ -49,8 +42,8 @@ class Model extends PDO {
 
   async insert(query, params) {
     try {
-      const res = await this.db.pool.query(query, params || [])
-      return { message: res.rows, type: 'insert', done: true }
+      const rows = await this.db.command(query, params || [])
+      return { message: rows, type: 'insert', done: true }
     } catch (err) {
       console.log('⚡ err::insert => ', err)
       return { err: err, done: false }
