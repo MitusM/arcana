@@ -180,6 +180,12 @@ const endpoints = async (app) => {
             google_place_id: p.google_place_id,
             url: p.url,
             source: p.source,
+            slug: p.slug || '',
+            summary: p.summary || '',
+            thumbnail: p.thumbnail || '',
+            typeName: p.typeName || null,
+            typeSlug: p.typeSlug || null,
+            destSlug: p.slug || '',
             center: [Number(p.lng), Number(p.lat)],
           },
         }))

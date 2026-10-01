@@ -28,6 +28,7 @@ const action = async (app) => {
       // ищем по Dest: только опубликованные, с координатами
       const rows = await db.queryAll(
         `SELECT title, description, level, slug, image,
+                summary, thumbnail,
                 location.coordinates[0] AS lng, location.coordinates[1] AS lat,
                 out('HAS_TYPE').name AS typeName, out('HAS_TYPE').slug AS typeSlug
          FROM Dest
@@ -49,6 +50,8 @@ const action = async (app) => {
           typeName: Array.isArray(r.typeName) ? r.typeName[0] : (r.typeName || null),
           typeSlug: Array.isArray(r.typeSlug) ? r.typeSlug[0] : (r.typeSlug || null),
           image: r.image || '',
+          summary: r.summary || '',
+          thumbnail: r.thumbnail || '',
           source: 'destinations',
         }))
 

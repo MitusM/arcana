@@ -2466,11 +2466,69 @@ function renderMapHtml(opts = {}) {
         });
         map.addControl(geocoder, position);
         map._frtGeocoder = geocoder;
-        // при выборе результата — плавный перелёт к месту
+        // при выборе результата — плавный перелёт к месту + маркер с popup'ом
         geocoder.on('result', function (e) {
           var c = e && e.result && e.result.center;
-          if (c && c.length === 2) {
-            map.jumpTo({ center: c, zoom: zoom });
+          if (!c || c.length !== 2) return;
+          map.jumpTo({ center: c, zoom: zoom });
+
+          // Если результат из каталога Dest — ставим стилизованный маркер с popup'ом
+          var props = e.result.properties || {};
+          if (!props.destSlug) return;
+
+          // Удаляем предыдущий поисковый маркер
+          if (map._frtSearchMk) { map._frtSearchMk.remove(); }
+
+          var lng = +c[0], lat = +c[1];
+          var fillColor = (props.typeSlug && TYPE_COLORS[props.typeSlug]) || '#e11d48';
+          var spn = document.createElement('div');
+          spn.style.background = fillColor;
+          spn.style.width = '26px';
+          spn.style.height = '26px';
+          spn.style.borderRadius = '50% 50% 50% 0';
+          spn.style.transform = 'rotate(-45deg)';
+          spn.style.border = '2px solid #fff';
+          spn.style.boxShadow = '0 2px 6px rgba(0,0,0,.4)';
+          spn.style.display = 'flex';
+          spn.style.alignItems = 'center';
+          spn.style.justifyContent = 'center';
+
+          map._frtSearchMk = new maplibregl.Marker({ element: spn })
+            .setLngLat([lng, lat])
+            .setPopup(
+              new maplibregl.Popup({ offset: 12, closeButton: false }).setHTML(
+                '<div class="frt-popup-card">' +
+                (props.thumbnail ? '<img src="' + props.thumbnail + '" class="frt-popup-thumb" />' : '') +
+                (props.typeName ? '<span class="frt-popup-type">' + props.typeName + '</span>' : '') +
+                '<strong>' + (props.name || props.title || 'Место') + '</strong>' +
+                (props.summary ? '<p class="frt-popup-summary">' + props.summary + '</p>' : '') +
+                (props.destSlug ? '<a href="/destinations/' + props.destSlug + '">Открыть страницу →</a>' : '') +
+                '</div>'
+              )
+            )
+            .addTo(map);
+
+          // WikiMedia фолбэк, если нет thumbnail
+          if (!props.thumbnail) {
+            (function(mk) {
+              var popup = mk.getPopup();
+              popup.on('open', function () {
+                var container = popup._container || popup._content;
+                if (!container || container.querySelector('.frt-popup-thumb') || container.dataset.frtPhotoLoading) return;
+                container.dataset.frtPhotoLoading = '1';
+                var placeId = 'coords:' + lat + ',' + lng;
+                fetch('/maps/place-photo/' + encodeURIComponent(placeId) + '/bytes')
+                  .then(function (r) { if (r.ok) return r.blob(); throw new Error('no-photo'); })
+                  .then(function (blob) {
+                    var img = document.createElement('img');
+                    img.className = 'frt-popup-thumb';
+                    img.src = URL.createObjectURL(blob);
+                    container.insertBefore(img, container.firstChild);
+                    delete container.dataset.frtPhotoLoading;
+                  })
+                  .catch(function () { delete container.dataset.frtPhotoLoading; });
+              });
+            })(map._frtSearchMk);
           }
         });
       } catch (err) {
