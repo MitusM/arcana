@@ -1,0 +1,75 @@
+<div class="container-fluid">
+  <div class="row">{% include "../breadcrumb.html" %}</div>
+  <div class="article">
+    <div class="container-fluid">
+      <div class="row">
+        <div class="col-12">
+          <div class="card">
+            <div class="card-body">
+              <form id="sectionForm" class="form" role="form">
+                <input type="hidden" name="csrf_token" value="{{ csrf }}" />
+                {% if section %}
+                <input type="hidden" name="rid" value="{{ section.rid }}" />
+                {% endif %}
+
+                <div class="form-group">
+                  <label>Название (ru):</label>
+                  <input class="form-control" name="title" type="text"
+                    value="{{ section.title.ru or section.title or '' }}" required autofocus />
+                </div>
+
+                <div class="form-group">
+                  <label>URL (slug):</label>
+                  <input class="form-control" name="url" type="text"
+                    value="{{ section.url or '' }}" placeholder="naprimer-asia" />
+                </div>
+
+                <div class="form-group">
+                  <label>Описание:</label>
+                  <textarea class="form-control" name="description" rows="3">{{ section.description or '' }}</textarea>
+                </div>
+
+                <div class="form-group">
+                  <label>Сортировка:</label>
+                  <input class="form-control" name="sortOrder" type="number"
+                    value="{{ section.sortOrder or 0 }}" />
+                </div>
+
+                <div class="form-group">
+                  <button type="button" id="submitBtn" class="btn btn-primary">
+                    {% if section %}Сохранить{% else %}Создать{% endif %}
+                  </button>
+                  <a href="/article/admin/" class="btn btn-outline-secondary">Отмена</a>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.getElementById('submitBtn').addEventListener('click', function(e) {
+  e.preventDefault();
+  var form = document.getElementById('sectionForm');
+  var data = {
+    csrf_token: '{{ csrf }}',
+    title: form.querySelector('[name="title"]').value,
+    url: form.querySelector('[name="url"]').value,
+    description: form.querySelector('[name="description"]').value,
+    sortOrder: form.querySelector('[name="sortOrder"]').value || '0',
+  };
+
+  {% if section %}
+  axios.put('/article/admin/section/' + '{{ section.rid }}', data).then(function(r) {
+    if (r.data.status === 200) location.href = '/article/admin/';
+  });
+  {% else %}
+  axios.post('/article/admin/section', data).then(function(r) {
+    if (r.data.status === 201) location.href = '/article/admin/';
+  });
+  {% endif %}
+});
+</script>

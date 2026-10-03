@@ -3,12 +3,9 @@ import pkg from 'app-root-path'
 import dotenv from 'dotenv'
 import { createRequire } from 'module'
 
-import { Cache } from '../service/cacheServices.js'
-import { validateArticleInput } from '../service/validation.js'
 import { csrfOk } from '../service/csrf.js'
+import { validateSectionInput, validateSubsectionInput, validateArticleInput } from '../service/validation.js'
 
-// import Files from '../../../core/cloud/index.js'
-import File from '../core/images/index.js'
 
 const require = createRequire(import.meta.url)
 const appRoot = pkg.path
@@ -18,47 +15,8 @@ const lang = require('../lang/ru')
 /** */
 const templateDir = path.join(appRoot, process.env.VIEW_DIR || 'view/html/')
 
-const Redis = new Cache({ db: 1 })
-
-// === === === === === === === === === === === ===
-// Кэш-ключи (централизованы). Раньше были захардкожены строками по коду.
-//   settings:article   — настройки МС
-//   articlePage:Admin:* — кэшированные HTML-страницы админки
-// === === === === === === === === === === === ===
-const K = {
-  SETTINGS: 'settings:article',
-  PAGE_PATTERN: 'articlePage:Admin:*', // паттерн инвалидации страниц
-  page: (key) => `articlePage:Admin:${key}`, // ключ конкретной страницы
-}
-
 const errorHandler = (res, message) => {
-  // get: {"message":{}}
   return res.status(200).json({ message: message })
-}
-
-/**
- * Удаляем страницы из кэша (Redis)
- * @returns {Promise }
- */
-let delCachePage = () => Redis.delPattern(K.PAGE_PATTERN)
-
-let extend = function () {
-  let merged = {}
-  Array.prototype.forEach.call(arguments, function (obj) {
-    for (let key in obj) {
-      if (!obj.hasOwnProperty(key)) return
-      merged[key] = obj[key]
-    }
-  })
-  return merged
-}
-
-Array.prototype.last = function () {
-  return this[this.length - 1]
-}
-
-const lastRid = function (arr) {
-  return arr.last().rid
 }
 
 const endpoints = async (app) => {
@@ -98,414 +56,468 @@ const endpoints = async (app) => {
     }
   })
 
-  app.get('/article/add-:page.:html', async (req, res) => {
+
+
+  // ============================================================
+  //  Admin: Sections (разделы)
+  // ============================================================
+
+  // --- Страница со списком разделов ---
+  app.get('/article/admin/', async (req, res) => {
     try {
-      console.log('⚡ req.params::', req.params)
-      let page = req.params.page
-      console.log('⚡ page::', page)
-      let title = lang.add.title[page]
-      console.log('⚡ title::', title)
-      // console.log('⚡ process.env.TEMPLATE_FILE::', process.env.TEMPLATE_FILE)
+      const sections = await db.getSections()
       const { response } = await res.app.ask('render', {
         server: {
           action: 'html',
           meta: {
-            dir: templateDir, // directory users template
-            // FIXME: Перенести в настройки расположенные в БД
-            page: process.env.TEMPLATE_FILE, // file template
-            // data for template
+            dir: templateDir,
+            page: process.env.TEMPLATE_FILE,
             data: {
               csrf: req.session.csrfSecret,
-              title: title,
+              title: 'Разделы статей | cloudFRT',
               lang: lang,
-              page: `./page/create/add-section.html`, //${add}
-              breadcrumb: page,
-              // settings: settings,
-              // country: division.response.country,
-              urlAdd: page,
+              page: './page/article/sections.html',
+              breadcrumb: 'article-admin',
+              sections: sections,
             },
           },
         },
       })
-      // console.log('⚡ response::', response)
-      // let html = response.html
       res.status(200).end(response.html)
-    } catch (err) {}
+    } catch (err) {
+      console.log('⚡ err::/article/admin/', err)
+      errorHandler(res, err)
+    }
   })
 
-  app.get('/article/create-:add.:html', async (req, res) => {
+  // --- Форма создания раздела ---
+  app.get('/article/admin/section/create', async (req, res) => {
     try {
-      let add = req.params.add
-      let articleLimit
-      let cacheServices
-      let articleQuota
-      let page
-      let multi = await Redis.multi()
-        .get(K.SETTINGS)
-        .get(K.page(add))
-        .exec()
-
-      let settings = JSON.parse(multi[0][1])
-
-      if (settings === null) {
-        let s = await db.getSettings()
-
-        if (s === undefined) {
-          articleLimit = process.env.ARTICLE_LIMIT
-          cacheServices = process.env.CACHE
-          articleQuota = process.env.ARTICLE_QUOTA
-        } else {
-          articleLimit = s.settings.limit
-          cacheServices = s.settings.cache
-          articleQuota = s.settings.quota
-        }
-
-        /** Получаем список стран */
-        const division = await res.app.ask('geo', {
-          server: {
-            action: 'geo:division:country',
-            meta: {
+      const { response } = await res.app.ask('render', {
+        server: {
+          action: 'html',
+          meta: {
+            dir: templateDir,
+            page: process.env.TEMPLATE_FILE,
+            data: {
               csrf: req.session.csrfSecret,
-              list: 'country',
+              title: 'Создать раздел | cloudFRT',
+              lang: lang,
+              page: './page/article/section-form.html',
+              breadcrumb: 'section-create',
+              section: null,
             },
           },
-        })
-
-        /**
-         * cacheServices => false
-         * Если кэширование страницы отклонено в настройках
-         */
-        if (!!cacheServices) {
-          let title = lang.add.title[add]
-          const { response } = await res.app.ask('render', {
-            server: {
-              action: 'html',
-              meta: {
-                dir: templateDir, // directory users template
-                // FIXME: Перенести в настройки расположенные в БД
-                page: process.env.TEMPLATE_FILE, // file template
-                // data for template
-                data: {
-                  csrf: req.session.csrfSecret,
-                  title: title,
-                  lang: lang,
-                  page: `./page/create/index.html`, //${add}
-                  breadcrumb: add,
-                  settings: settings,
-                  country: division.response.country,
-                  urlAdd: add,
-                },
-              },
-            },
-          })
-
-          page = response.html
-        } else {
-        }
-      }
-      res.status(200).end(page)
-    } catch (err) {
-      console.log('⚡ err::', err)
-    }
-  })
-
-  /**
-   * Настройки - Settings
-   */
-  app.get('/article/settings(.*)', async (req, res) => {
-    try {
-      /**  */
-      let settings
-      let page = await Redis.multi()
-        .get(K.SETTINGS) // settings:article — свой ключ (совпадает с PUT)
-        .get(K.page('settings'))
-        .exec()
-
-      if (page[0][1] === null) {
-        settings = {
-          quota: process.env.USER_QUOTA,
-          limit: process.env.USER_LIMIT,
-          cache: process.env.CACHE,
-        }
-      } else {
-        settings = JSON.parse(page[0][1])
-      }
-
-      if (page[1][1] === null) {
-        const { response } = await res.app.ask('render', {
-          server: {
-            action: 'html',
-            meta: {
-              dir: templateDir, // directory users template
-              page: process.env.TEMPLATE_FILE, // file template
-              // data for template
-              data: {
-                csrf: req.session.csrfSecret,
-                title: 'Настройки - Статьи | cloudFRT',
-                lang: lang,
-                page: './page/settings.html',
-                breadcrumb: 'settings',
-                settings: settings,
-              },
-            },
-          },
-        })
-        Redis.set(K.page('settings'), response.html)
-        page = response.html
-      } else {
-        page = page[1][1]
-      }
-
-      res.status(200).end(page)
-    } catch (err) {
-      console.log('⚡ err::settings', err)
-      return errorHandler(res, err)
-    }
-  })
-
-  /*************************************
-   *  * * * * * * POST * * * * * * *  *
-   *************************************/
-  app.post('/upload/article-country', async (req, res) => {
-    try {
-      const body = req.body
-      // console.log('⚡ body::', body)
-      /**
-       * Дополнительные поля с файлом
-       */
-      const fields = body.fields
-      /** Оригинальное загруженное изображение */
-      const files = body.files[0]
-      /** Папка для уменьшенных копий */
-      const resizeFolder = fields.name
-        ? files.resize + fields.name
-        : files.resize
-
-      let Images = new File({
-        webQuality: 80,
-        jpgQuality: 80,
-      })
-      /** абсолютный путь до файла*/
-      let absolutePathFile = files.isAbsolute
-      /** webp the images */
-      let webpFolder = fields.name
-        ? process.env.WEBP_FOLDER_COUNTRY + fields.name
-        : process.env.WEBP_FOLDER_COUNTRY
-      /** Создаём копию оригинала в webp */
-      let webp = await Images.webp(absolutePathFile, webpFolder)
-      /** Абсолютный путь до файла webp original */
-      let wepFile = webp[0].destinationPath
-      /**
-       * Статистика файла
-       */
-      let statFile = await Images.statFile(wepFile)
-      /** Ширина изображения */
-      let imgWidth = statFile.width
-
-      /**
-       * Resize the image
-       */
-      // let resolutionsArr = [360, 480, 768, 960, 1024, 1280, 1536, 2700]
-      let resolutionsArr = [480, 960, 1280, 1920, 2700]
-      /**  */
-      let minResolution = Images.util.minFilter(resolutionsArr, imgWidth)
-      /** Создание уменьшенных копий
-       * @return {Array} Массив с уменьшенными копиями
-       */
-      let img = await Images.resizeWEBP(minResolution, wepFile, resizeFolder)
-      /** Превращаем массив с данными уменьшенных копий в объект
-       * @returns {Object} Object
-       */
-      let obj = await Images.util.arrayToObject(img, 'width')
-      /** Папки в которые сохраняем изображения */
-      // let folder = {
-      //   webp: webpFolder,
-      //   original: files.folder,
-      //   resize: resizeFolder,
-      // }
-
-      let imgR = img.map((file, index) => {
-        return file.pathFile
-      })
-
-      res.status(200).json({
-        status: 200,
-        body: {
-          original: {
-            name: files.newName,
-            pathFile: files.path,
-          },
-          resize: obj,
-          webpOriginal: {
-            originalName: statFile.name,
-            name: statFile.name,
-            pathFile: wepFile.split(appRoot)[1],
-            format: statFile.type,
-            size: statFile.size,
-            bytes: statFile.bytes,
-            height: statFile.height,
-            width: imgWidth,
-          },
-          resolution: minResolution,
-          files: [...imgR, files.path, statFile.path],
         },
       })
+      res.status(200).end(response.html)
     } catch (err) {
-      console.log('⚡ err::upload', err)
-      res.status(500).json({ status: 500, message: 'Server error' })
+      console.log('⚡ err::section/create', err)
+      errorHandler(res, err)
     }
   })
 
-  app.post('/article/validate', async (req, res) => {
+  // --- Форма редактирования раздела ---
+  app.get('/article/admin/section/:rid/edit', async (req, res) => {
     try {
-      const body = req.body
-      if (csrfOk(body, req)) {
-        let valid = await db.select(body.type, body.params, body.value)
-        let length = valid.length
-        let obj = {
-          total: length,
-          result: valid,
-        }
-        if (length > 0) {
-          let url = path.parse(valid[0].url)
-          obj.url = url.name + length + url.ext
-        }
-        res.status(200).json(obj)
-      } else {
-      }
+      const section = await db.getSection(req.params.rid)
+      const { response } = await res.app.ask('render', {
+        server: {
+          action: 'html',
+          meta: {
+            dir: templateDir,
+            page: process.env.TEMPLATE_FILE,
+            data: {
+              csrf: req.session.csrfSecret,
+              title: 'Редактировать раздел | cloudFRT',
+              lang: lang,
+              page: './page/article/section-form.html',
+              breadcrumb: 'section-edit',
+              section: section,
+            },
+          },
+        },
+      })
+      res.status(200).end(response.html)
     } catch (err) {
-      console.log('⚡ err::validate::', err)
-      return errorHandler(res, err)
+      console.log('⚡ err::section/edit', err)
+      errorHandler(res, err)
     }
   })
 
-  /*************************************
-   * * * * * * * * PUT * * * * * * * * *
-   *************************************/
-
-  app.put('/article/create-:add(.*)', async (req, res) => {
+  // --- Подразделы внутри раздела ---
+  app.get('/article/admin/section/:rid', async (req, res) => {
     try {
-      const body = req.body
-      let add = req.params.add
-      let table
-
-      if (!csrfOk(body, req)) {
-        // no CSRF protection
-        return res.status(403).end('Forbidden')
-      }
-
-      // --- Определить таблицу по аддитиву + проверить обязательное дочернее поле ---
-      switch (add) {
-        case 'country':
-          table = 'Country'
-          if (body.country === '') {
-            return res.status(200).json({ insert: false, message: lang.error.country })
-          }
-          break
-        case 'ate':
-          table = 'Territorial'
-          if (body.ate === '') {
-            return res.status(200).json({ insert: false, message: lang.error.ate })
-          }
-          break
-        case 'city':
-          table = 'City'
-          if (body.ate === '') {
-            return res.status(200).json({ insert: false, message: lang.error.city })
-          }
-          break
-        default:
-          table = false
-          break
-      }
-
-      // --- Централизованная валидация полей (белый список + нормализация) ---
-      const { ok, errors, obj } = validateArticleInput(body)
-      if (!ok || !body.title || body.title.trim() === '') {
-        // title обязательный
-        if (!Object.prototype.hasOwnProperty.call(obj, 'title')) {
-          return res.status(200).json({ insert: false, message: lang.error.article || 'Не заполнен заголовок' })
-        }
-      }
-
-      let country = table ? await db.setCreated(table, obj, body.location) : table
-      console.log('⚡ country::', country)
-
-      if (country && country.done) {
-        return res.status(201).json({ insert: true })
-      } else {
-        return res.status(200).json({ insert: false })
-      }
+      const section = await db.getSection(req.params.rid)
+      const subs = await db.getSubsections(req.params.rid)
+      const { response } = await res.app.ask('render', {
+        server: {
+          action: 'html',
+          meta: {
+            dir: templateDir,
+            page: process.env.TEMPLATE_FILE,
+            data: {
+              csrf: req.session.csrfSecret,
+              title: section?.title?.ru || 'Подразделы | cloudFRT',
+              lang: lang,
+              page: './page/article/subsections.html',
+              breadcrumb: 'subsections',
+              section: section,
+              subsections: subs,
+            },
+          },
+        },
+      })
+      res.status(200).end(response.html)
     } catch (err) {
-      console.log('⚡ err::add', err)
-      return errorHandler(res, err)
+      console.log('⚡ err::section/:rid', err)
+      errorHandler(res, err)
     }
   })
 
-  app.put('/article/settings(.*)', async (req, res) => {
+  // --- CREATE Section (JSON) ---
+  app.post('/article/admin/section', async (req, res) => {
     try {
-      const body = req.body
-      if (!csrfOk(body, req)) {
+      if (!csrfOk(req.body, req)) {
         return res.status(403).json({ status: 403, message: 'Forbidden' })
       }
-      const obj = {
-        limit: body.limit,
-        quota: body.quota,
-        cache: body.cache,
+      const { ok, errors, obj } = validateSectionInput(req.body)
+      if (!ok) {
+        return res.status(400).json({ status: 400, message: errors.join('; ') })
       }
-      /** Сохраняем или обновляем настройки в БД */
-      const settings = await db.setSettings(obj)
-      /** Сохраняем или обновляем настройки в Redis */
-      const setRedis = await Redis.set(K.SETTINGS, JSON.stringify(obj))
-      /** Удаляем страницы из Redis - кэш */
-      const del = await Redis.delPattern(K.PAGE_PATTERN)
-      // console.log('⚡ del::', del)
-      let status = 201
-      const message = {}
-      if (settings.count === 1) {
-        message.bd = 1
-      } else {
-        status = 200
-        message.bd = 0
+      const result = await db.createSection(obj)
+      if (result.done) {
+        return res.status(201).json({ status: 201, rid: result.message?.[0]?.rid || result.message?.[0]?.['@rid'] })
       }
-
-      if (setRedis === 'OK') {
-        message.redis = 1
-      } else {
-        status = 200
-        message.redis = 0
-      }
-
-      if (del === true) {
-        message.cache = 1
-      } else {
-        status = 200
-        message.cache = 0
-      }
-      res.status(status).json({ status, message })
+      res.status(200).json({ status: 200, done: false, err: result.err })
     } catch (err) {
-      return errorHandler(res, err)
+      console.log('⚡ err::POST section', err)
+      errorHandler(res, err)
     }
   })
 
-  /*************************************
-   * * * * * * * DELETE * * * * * * * * *
-   *************************************/
-  app.delete('/article/delete-:endpoint(.*)', async (req, res) => {
-    console.log('⚡ req.params::', req.params)
+  // --- UPDATE Section (JSON) ---
+  app.put('/article/admin/section/:rid', async (req, res) => {
     try {
-      const body = req.body
-      if (csrfOk(body, req) && req.session.auth === true) {
-        let deleteFile = await new File().deleteArrayFiles(body.files)
-        console.log('⚡ deleteFile::', deleteFile)
-        let status = deleteFile === true ? 201 : 200
-        res.status(200).json({
-          status: status,
-
-          // body: req.body
-        })
+      if (!csrfOk(req.body, req)) {
+        return res.status(403).json({ status: 403, message: 'Forbidden' })
       }
+      const { ok, errors, obj } = validateSectionInput(req.body)
+      if (!ok) {
+        return res.status(400).json({ status: 400, message: errors.join('; ') })
+      }
+      const result = await db.updateSection(req.params.rid, obj)
+      res.status(200).json({ status: 200, result })
     } catch (err) {
+      console.log('⚡ err::PUT section', err)
+      errorHandler(res, err)
+    }
+  })
+
+  // --- DELETE Section ---
+  app.delete('/article/admin/section/:rid', async (req, res) => {
+    try {
+      if (!csrfOk(req.body, req)) {
+        return res.status(403).json({ status: 403, message: 'Forbidden' })
+      }
+      const result = await db.deleteSection(req.params.rid)
+      res.status(200).json({ status: 200, result })
+    } catch (err) {
+      console.log('⚡ err::DELETE section', err)
+      errorHandler(res, err)
+    }
+  })
+
+  // ============================================================
+  //  Admin: Subsections (подразделы)
+  // ============================================================
+
+  // --- Форма создания подраздела ---
+  app.get('/article/admin/sub/create/:parentRid', async (req, res) => {
+    try {
+      const { response } = await res.app.ask('render', {
+        server: {
+          action: 'html',
+          meta: {
+            dir: templateDir,
+            page: process.env.TEMPLATE_FILE,
+            data: {
+              csrf: req.session.csrfSecret,
+              title: 'Создать подраздел | cloudFRT',
+              lang: lang,
+              page: './page/article/subsection-form.html',
+              breadcrumb: 'subsection-create',
+              parentRid: req.params.parentRid,
+              subsection: null,
+            },
+          },
+        },
+      })
+      res.status(200).end(response.html)
+    } catch (err) {
+      console.log('⚡ err::sub/create', err)
+      errorHandler(res, err)
+    }
+  })
+
+  // --- Форма редактирования подраздела ---
+  app.get('/article/admin/sub/:rid/edit', async (req, res) => {
+    try {
+      const subsection = await db.getSubsection(req.params.rid)
+      const { response } = await res.app.ask('render', {
+        server: {
+          action: 'html',
+          meta: {
+            dir: templateDir,
+            page: process.env.TEMPLATE_FILE,
+            data: {
+              csrf: req.session.csrfSecret,
+              title: 'Редактировать подраздел | cloudFRT',
+              lang: lang,
+              page: './page/article/subsection-form.html',
+              breadcrumb: 'subsection-edit',
+              parentRid: null,
+              subsection: subsection,
+            },
+          },
+        },
+      })
+      res.status(200).end(response.html)
+    } catch (err) {
+      console.log('⚡ err::sub/edit', err)
+      errorHandler(res, err)
+    }
+  })
+
+  // --- Статьи внутри подраздела ---
+  app.get('/article/admin/sub/:rid', async (req, res) => {
+    try {
+      const subsection = await db.getSubsection(req.params.rid)
+      const articles = await db.getArticles(req.params.rid)
+      const { response } = await res.app.ask('render', {
+        server: {
+          action: 'html',
+          meta: {
+            dir: templateDir,
+            page: process.env.TEMPLATE_FILE,
+            data: {
+              csrf: req.session.csrfSecret,
+              title: subsection?.title?.ru || 'Статьи | cloudFRT',
+              lang: lang,
+              page: './page/article/articles.html',
+              breadcrumb: 'articles',
+              subsection: subsection,
+              articles: articles,
+            },
+          },
+        },
+      })
+      res.status(200).end(response.html)
+    } catch (err) {
+      console.log('⚡ err::sub/:rid', err)
+      errorHandler(res, err)
+    }
+  })
+
+  // --- CREATE Subsection (JSON) ---
+  app.post('/article/admin/sub', async (req, res) => {
+    try {
+      if (!csrfOk(req.body, req)) {
+        return res.status(403).json({ status: 403, message: 'Forbidden' })
+      }
+      const { ok, errors, obj } = validateSubsectionInput(req.body)
+      if (!ok) {
+        return res.status(400).json({ status: 400, message: errors.join('; ') })
+      }
+      const parentRid = req.body.parentRid
+      if (!parentRid) {
+        return res.status(400).json({ status: 400, message: 'parentRid required' })
+      }
+      const result = await db.createSubsection(obj, parentRid)
+      if (result.done) {
+        return res.status(201).json({ status: 201, rid: result.message?.[0]?.rid || result.message?.[0]?.['@rid'] })
+      }
+      res.status(200).json({ status: 200, done: false, err: result.err })
+    } catch (err) {
+      console.log('⚡ err::POST sub', err)
+      errorHandler(res, err)
+    }
+  })
+
+  // --- UPDATE Subsection (JSON) ---
+  app.put('/article/admin/sub/:rid', async (req, res) => {
+    try {
+      if (!csrfOk(req.body, req)) {
+        return res.status(403).json({ status: 403, message: 'Forbidden' })
+      }
+      const { ok, errors, obj } = validateSubsectionInput(req.body)
+      if (!ok) {
+        return res.status(400).json({ status: 400, message: errors.join('; ') })
+      }
+      const result = await db.updateSubsection(req.params.rid, obj)
+      res.status(200).json({ status: 200, result })
+    } catch (err) {
+      console.log('⚡ err::PUT sub', err)
+      errorHandler(res, err)
+    }
+  })
+
+  // --- DELETE Subsection ---
+  app.delete('/article/admin/sub/:rid', async (req, res) => {
+    try {
+      if (!csrfOk(req.body, req)) {
+        return res.status(403).json({ status: 403, message: 'Forbidden' })
+      }
+      const result = await db.deleteSubsection(req.params.rid)
+      res.status(200).json({ status: 200, result })
+    } catch (err) {
+      console.log('⚡ err::DELETE sub', err)
+      errorHandler(res, err)
+    }
+  })
+
+  // ============================================================
+  //  Admin: Articles (статьи)
+  // ============================================================
+
+  // --- Форма создания статьи ---
+  app.get('/article/admin/create/:parentRid', async (req, res) => {
+    try {
+      const { response } = await res.app.ask('render', {
+        server: {
+          action: 'html',
+          meta: {
+            dir: templateDir,
+            page: process.env.TEMPLATE_FILE,
+            data: {
+              csrf: req.session.csrfSecret,
+              title: 'Создать статью | cloudFRT',
+              lang: lang,
+              page: './page/article/article-form.html',
+              breadcrumb: 'article-create',
+              parentRid: req.params.parentRid,
+              article: null,
+            },
+          },
+        },
+      })
+      res.status(200).end(response.html)
+    } catch (err) {
+      console.log('⚡ err::article/create', err)
+      errorHandler(res, err)
+    }
+  })
+
+  // --- Форма редактирования статьи ---
+  app.get('/article/admin/:rid/edit', async (req, res) => {
+    try {
+      const article = await db.getArticle(req.params.rid)
+      const { response } = await res.app.ask('render', {
+        server: {
+          action: 'html',
+          meta: {
+            dir: templateDir,
+            page: process.env.TEMPLATE_FILE,
+            data: {
+              csrf: req.session.csrfSecret,
+              title: 'Редактировать статью | cloudFRT',
+              lang: lang,
+              page: './page/article/article-form.html',
+              breadcrumb: 'article-edit',
+              parentRid: null,
+              article: article,
+            },
+          },
+        },
+      })
+      res.status(200).end(response.html)
+    } catch (err) {
+      console.log('⚡ err::article/edit', err)
+      errorHandler(res, err)
+    }
+  })
+
+  // --- CREATE Article (JSON) ---
+  app.post('/article/admin', async (req, res) => {
+    try {
+      if (!csrfOk(req.body, req)) {
+        return res.status(403).json({ status: 403, message: 'Forbidden' })
+      }
+      const { ok, errors, obj } = validateArticleInput(req.body)
+      if (!ok) {
+        return res.status(400).json({ status: 400, message: errors.join('; ') })
+      }
+      const parentRid = req.body.parentRid
+      if (!parentRid) {
+        return res.status(400).json({ status: 400, message: 'parentRid required' })
+      }
+      const result = await db.createArticle(obj, parentRid)
+      if (result.done) {
+        return res.status(201).json({ status: 201, rid: result.message?.[0]?.rid || result.message?.[0]?.['@rid'] })
+      }
+      res.status(200).json({ status: 200, done: false, err: result.err })
+    } catch (err) {
+      console.log('⚡ err::POST article', err)
+      errorHandler(res, err)
+    }
+  })
+
+  // --- UPDATE Article (JSON) ---
+  app.put('/article/admin/:rid', async (req, res) => {
+    try {
+      if (!csrfOk(req.body, req)) {
+        return res.status(403).json({ status: 403, message: 'Forbidden' })
+      }
+      const { ok, errors, obj } = validateArticleInput(req.body)
+      if (!ok) {
+        return res.status(400).json({ status: 400, message: errors.join('; ') })
+      }
+      const result = await db.updateArticle(req.params.rid, obj)
+      res.status(200).json({ status: 200, result })
+    } catch (err) {
+      console.log('⚡ err::PUT article', err)
+      errorHandler(res, err)
+    }
+  })
+
+  // --- Publish Article ---
+  app.put('/article/admin/:rid/publish', async (req, res) => {
+    try {
+      if (!csrfOk(req.body, req)) {
+        return res.status(403).json({ status: 403, message: 'Forbidden' })
+      }
+      const result = await db.publishArticle(req.params.rid)
+      res.status(200).json({ status: 200, result })
+    } catch (err) {
+      console.log('⚡ err::publish', err)
+      errorHandler(res, err)
+    }
+  })
+
+  // --- Unpublish Article ---
+  app.put('/article/admin/:rid/unpublish', async (req, res) => {
+    try {
+      if (!csrfOk(req.body, req)) {
+        return res.status(403).json({ status: 403, message: 'Forbidden' })
+      }
+      const result = await db.unpublishArticle(req.params.rid)
+      res.status(200).json({ status: 200, result })
+    } catch (err) {
+      console.log('⚡ err::unpublish', err)
+      errorHandler(res, err)
+    }
+  })
+
+  // --- DELETE Article ---
+  app.delete('/article/admin/:rid', async (req, res) => {
+    try {
+      if (!csrfOk(req.body, req)) {
+        return res.status(403).json({ status: 403, message: 'Forbidden' })
+      }
+      const result = await db.deleteArticle(req.params.rid)
+      res.status(200).json({ status: 200, result })
+    } catch (err) {
+      console.log('⚡ err::DELETE article', err)
       errorHandler(res, err)
     }
   })

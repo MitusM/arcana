@@ -1,7 +1,6 @@
 /** ***** ***** ***** ***** ***** ***** *****
  * *  middleware - setup route middlewares  *
- * Copyright (c) 2021 MitusM.
- *
+ * article admin: /article/admin/* — защищён авторизацией.
  * ***** ***** ***** ***** ***** ***** ***** */
 'use strict'
 
@@ -9,27 +8,32 @@ const middlewares = (app) => {
   app.all(
     [
       '/article/',
-      '/article/settings(.*)',
-      '/article/add-:page.:html',
-      '/article/upload-:upload(.*)',
-      '/article/delete-:endpoint(.*)',
-      '/article/create-:add(.*)',
-      '/article/validate',
+      '/article/admin(.*)',
     ],
     async (req, res, next) => {
       if (!req.session.auth) {
-        const redirect = await res.app.ask('auth', {
-          server: {
-            action: 'aut:redirect',
-            meta: {
-              csrf: req.session.csrfSecret,
+        try {
+          const redirect = await res.app.ask('auth', {
+            server: {
+              action: 'aut:redirect',
+              meta: { csrf: req.session.csrfSecret },
             },
-          },
-        })
-        res.end(redirect.response)
-      } else {
-        next()
+          })
+          const html =
+            (redirect && redirect.response && redirect.response.html) ||
+            (redirect && redirect.html) ||
+            (redirect && redirect.response) ||
+            ''
+          if (html) {
+            return res.status(200).end(html)
+          }
+          return res.status(401).json({ error: 'unauthorized' })
+        } catch (err) {
+          console.log('⚡ err::article middleware aut:redirect', err)
+          return res.status(401).json({ error: 'unauthorized' })
+        }
       }
+      next()
     },
   )
 

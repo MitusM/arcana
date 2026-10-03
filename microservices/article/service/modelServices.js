@@ -29,8 +29,7 @@ class Model extends PDO {
 
   async queryRid(query) {
     try {
-      const res = await this.db.pool.query(query)
-      return res.rows[0] || null
+      return await this.db.queryOne(query)
     } catch (err) {
       return err
     }
@@ -48,11 +47,7 @@ class Model extends PDO {
 
   async create(edgeClass, from, to) {
     try {
-      const res = await this.db.pool.query(
-        `CREATE EDGE ${edgeClass} FROM $1 TO $2`,
-        [from, to]
-      )
-      return res.rows[0] || null
+      return await this.db.createEdge(edgeClass, from, to)
     } catch (err) {
       console.log('⚡ err::create => ', err)
       process.exit()
@@ -68,84 +63,185 @@ class Model extends PDO {
     }
   }
 
-  /** Экранировать строку от SQL-инъекции для инлайна в запрос (одинарные кавычки) */
-  sq(v) {
-    return v == null ? "''" : `'${String(v).replace(/'/g, "\\'")}'`
+  // ============================================================
+  //  Section / Subsection / Article — методы админки
+  // ============================================================
+
+  // ---------- Разделы (Section) ----------
+
+  /** Все разделы, сортированные по sortOrder */
+  async getSections() {
+    return this.queryAll('SELECT *, @rid as rid FROM Section ORDER BY sortOrder ASC')
   }
 
-  getAll(limit = 10) {
-    // ORDER BY created DESC
-    return this.queryAll('SELECT @rid as rid, _id FROM article LIMIT ' + limit)
+  /** Один раздел по RID */
+  async getSection(rid) {
+    return this.queryOne(`SELECT *, @rid as rid FROM ${rid}`)
   }
 
-  update(set, rid, obj) {
+  /** Создать раздел */
+  async createSection(data) {
     return this.insert(
-      'UPDATE article SET ' + set + ' UPSERT WHERE @rid =' + rid,
-      { params: { ...obj } },
+      'INSERT INTO Section SET title=:title, description=:description, url=:url, sortOrder=:sortOrder, image=:image, created=sysdate(), updated=sysdate()',
+      { params: { ...data } },
     )
   }
 
-  async paginate(lowerRid, limit) {
+  /** Обновить раздел */
+  async updateSection(rid, data) {
+    const sets = []
+    const p = {}
+    for (const [k, v] of Object.entries(data)) {
+      sets.push(`${k}=:${k}`)
+      p[k] = v
+    }
+    if (!sets.length) return null
+    sets.push('updated=sysdate()')
+    return this.command(
+      `UPDATE ${rid} SET ${sets.join(', ')}`,
+      { params: p },
+    )
+  }
+
+  /** Удалить раздел (и все рёбра к подразделам) */
+  async deleteSection(rid) {
+    // Удалить входящие/исходящие рёбра
+    await this.command(`DELETE EDGE FROM ${rid}`)
+    await this.command(`DELETE EDGE TO ${rid}`)
+    return this.command(`DELETE VERTEX ${rid}`)
+  }
+
+  // ---------- Подразделы (Subsection) ----------
+
+  /** Подразделы внутри одного родителя (Section или Subsection) */
+  async getSubsections(parentRid) {
     return this.queryAll(
-      'SELECT @rid as rid,  FROM article WHERE @rid > ' +
-        lowerRid +
-        ' LIMIT ' +
-        limit,
+      `SELECT *, @rid as rid FROM Subsection WHERE in('HAS_SUBSECTION') = ${parentRid} ORDER BY sortOrder ASC`,
     )
   }
 
-  getSettings() {
-    return this.queryOne('SELECT * FROM Settings WHERE microservice="article"')
+  /** Один подраздел по RID */
+  async getSubsection(rid) {
+    return this.queryOne(`SELECT *, @rid as rid FROM ${rid}`)
   }
 
-  /** Сохранить настройки МС article (UPSERT по полю microservice). */
-  async setSettings(obj) {
-    try {
-      const res = await this.db.pool.query(
-        'UPDATE Settings SET settings=:settings, microservice="article", created=sysdate() UPSERT WHERE microservice="article"',
-        { params: { settings: obj } },
-      )
-      return res.rows[0] || null
-    } catch (err) {
-      console.log('⚡ err::Model.setSettings', err)
-      return null
+  /** Создать подраздел и привязать к родителю */
+  async createSubsection(data, parentRid) {
+    const result = await this.insert(
+      'INSERT INTO Subsection SET title=:title, description=:description, url=:url, sortOrder=:sortOrder, image=:image, created=sysdate(), updated=sysdate()',
+      { params: { ...data } },
+    )
+    if (!result.done || !result.message || !result.message.length) {
+      return result
     }
+    const newRid = result.message[0].rid || result.message[0]['@rid']
+    if (newRid) {
+      await this.create('HAS_SUBSECTION', parentRid, newRid)
+    }
+    return result
   }
 
-  setCreated(table, obj, location) {
-    // Безопасность: номер-место передаётся инлайном в SQL → экранируем кавычки,
-    // допускаем только числа/пробел/запятую (координаты в формате "lng, lat").
-    const safeLoc = String(location || '').replace(/[^0-9.,\-\s]/g, '')
-    return this.insert(
-      'INSERT INTO ' +
-        table +
-        ' SET title=:title, country=:country, country_id=:country_id,img_upload=:img_upload, created=sysdate(), id=:id, content=:content, description=:description, url=:url, keyword=:keyword, searchable=:searchable, tags=:tags, config=:config, image=:image, main=:main, location=geo.geomFromText("POINT(' +
-        safeLoc +
-        ')")',
-      { params: { ...obj } },
+  /** Обновить подраздел */
+  async updateSubsection(rid, data) {
+    const sets = []
+    const p = {}
+    for (const [k, v] of Object.entries(data)) {
+      sets.push(`${k}=:${k}`)
+      p[k] = v
+    }
+    if (!sets.length) return null
+    sets.push('updated=sysdate()')
+    return this.command(
+      `UPDATE ${rid} SET ${sets.join(', ')}`,
+      { params: p },
     )
   }
 
-  // Допустимые значения для /article/validate (белый список классов и полей).
-  // Защита от SQL-инъекции: table/params приходят из body напрямую.
-  static SELECT_TABLES = ['Country', 'Territorial', 'City', 'article']
+  /** Удалить подраздел (и все рёбра, и дочерние объекты) */
+  async deleteSubsection(rid) {
+    // Удалить статьи, привязанные к этому подразделу
+    const articles = await this.queryAll(
+      `SELECT @rid as rid FROM Article WHERE in('HAS_ARTICLE') = ${rid}`,
+    )
+    for (const a of articles || []) {
+      if (a.rid) await this.command(`DELETE VERTEX ${a.rid}`)
+    }
+    // Удалить дочерние подразделы (рекурсивно не идём — пользователь
+    // должен сначала очистить вложенные подразделы)
+    await this.command(`DELETE EDGE FROM ${rid}`)
+    await this.command(`DELETE EDGE TO ${rid}`)
+    return this.command(`DELETE VERTEX ${rid}`)
+  }
 
-  select(table, params, value) {
-    // --- белый список таблиц ---
-    const tables = Model.SELECT_TABLES
-    if (!tables.includes(table)) {
-      throw new Error('select: недопустимая таблица ' + table)
-    }
-    // --- белый список полей (разрешаем печатаймые идентификаторы + точку для вложенных) ---
-    if (!/^[a-zA-Z_][a-zA-Z0-9_.]*$/.test(params)) {
-      throw new Error('select: недопустимое поле ' + params)
-    }
-    // --- экранируем значение (double-quote для строкового литерала OrientSQL) ---
-    const safeValue = String(value == null ? '' : value).replace(/"/g, '\\"')
+  // ---------- Статьи (Article) ----------
+
+  /** Статьи внутри подраздела */
+  async getArticles(parentRid) {
     return this.queryAll(
-      `SELECT ${params} FROM ${table} WHERE ${params} = "${safeValue}"`,
+      `SELECT *, @rid as rid FROM Article WHERE in('HAS_ARTICLE') = ${parentRid} ORDER BY sortOrder ASC, created DESC`,
     )
   }
+
+  /** Одна статья по RID */
+  async getArticle(rid) {
+    return this.queryOne(`SELECT *, @rid as rid FROM ${rid}`)
+  }
+
+  /** Создать статью (published = false по умолчанию) и привязать к подразделу */
+  async createArticle(data, parentRid) {
+    const result = await this.insert(
+      'INSERT INTO Article SET title=:title, description=:description, url=:url, content=:content, tags=:tags, image=:image, keyword=:keyword, searchable=:searchable, config=:config, author=:author, sortOrder=:sortOrder, published=false, created=sysdate(), updated=sysdate()',
+      { params: { ...data } },
+    )
+    if (!result.done || !result.message || !result.message.length) {
+      return result
+    }
+    const newRid = result.message[0].rid || result.message[0]['@rid']
+    if (newRid) {
+      await this.create('HAS_ARTICLE', parentRid, newRid)
+    }
+    return result
+  }
+
+  /** Обновить статью */
+  async updateArticle(rid, data) {
+    const sets = []
+    const p = {}
+    for (const [k, v] of Object.entries(data)) {
+      if (k === 'rid' || k === '@rid') continue
+      sets.push(`${k}=:${k}`)
+      p[k] = v
+    }
+    if (!sets.length) return null
+    sets.push('updated=sysdate()')
+    return this.command(
+      `UPDATE ${rid} SET ${sets.join(', ')}`,
+      { params: p },
+    )
+  }
+
+  /** Опубликовать статью */
+  async publishArticle(rid) {
+    return this.command(
+      `UPDATE ${rid} SET published=true, updated=sysdate()`,
+    )
+  }
+
+  /** Снять с публикации */
+  async unpublishArticle(rid) {
+    return this.command(
+      `UPDATE ${rid} SET published=false, updated=sysdate()`,
+    )
+  }
+
+  /** Удалить статью */
+  async deleteArticle(rid) {
+    await this.command(`DELETE EDGE FROM ${rid}`)
+    await this.command(`DELETE EDGE TO ${rid}`)
+    return this.command(`DELETE VERTEX ${rid}`)
+  }
+
+
 }
 
 export { Model }

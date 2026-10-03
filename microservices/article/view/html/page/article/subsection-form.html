@@ -1,0 +1,79 @@
+<div class="container-fluid">
+  <div class="row">{% include "../breadcrumb.html" %}</div>
+  <div class="article">
+    <div class="container-fluid">
+      <div class="row">
+        <div class="col-12">
+          <div class="card">
+            <div class="card-body">
+              <form id="subsectionForm" class="form" role="form">
+                <input type="hidden" name="csrf_token" value="{{ csrf }}" />
+                {% if parentRid %}
+                <input type="hidden" name="parentRid" value="{{ parentRid }}" />
+                {% endif %}
+                {% if subsection %}
+                <input type="hidden" name="rid" value="{{ subsection.rid }}" />
+                {% endif %}
+
+                <div class="form-group">
+                  <label>Название (ru):</label>
+                  <input class="form-control" name="title" type="text"
+                    value="{{ subsection.title.ru or subsection.title or '' }}" required autofocus />
+                </div>
+
+                <div class="form-group">
+                  <label>URL (slug):</label>
+                  <input class="form-control" name="url" type="text"
+                    value="{{ subsection.url or '' }}" placeholder="naprimer-dostoprimechatelnosti" />
+                </div>
+
+                <div class="form-group">
+                  <label>Описание:</label>
+                  <textarea class="form-control" name="description" rows="3">{{ subsection.description or '' }}</textarea>
+                </div>
+
+                <div class="form-group">
+                  <label>Сортировка:</label>
+                  <input class="form-control" name="sortOrder" type="number"
+                    value="{{ subsection.sortOrder or 0 }}" />
+                </div>
+
+                <div class="form-group">
+                  <button type="button" id="submitBtn" class="btn btn-primary">
+                    {% if subsection %}Сохранить{% else %}Создать{% endif %}
+                  </button>
+                  <a href="/article/admin/" class="btn btn-outline-secondary">Отмена</a>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.getElementById('submitBtn').addEventListener('click', function(e) {
+  e.preventDefault();
+  var form = document.getElementById('subsectionForm');
+  var data = {
+    csrf_token: '{{ csrf }}',
+    title: form.querySelector('[name="title"]').value,
+    url: form.querySelector('[name="url"]').value,
+    description: form.querySelector('[name="description"]').value,
+    sortOrder: form.querySelector('[name="sortOrder"]').value || '0',
+    parentRid: '{{ parentRid }}',
+  };
+
+  {% if subsection %}
+  axios.put('/article/admin/sub/' + '{{ subsection.rid }}', data).then(function(r) {
+    if (r.data.status === 200) location.href = '/article/admin/';
+  });
+  {% else %}
+  axios.post('/article/admin/sub', data).then(function(r) {
+    if (r.data.status === 201) location.href = '/article/admin/';
+  });
+  {% endif %}
+});
+</script>

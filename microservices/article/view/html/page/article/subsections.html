@@ -1,0 +1,76 @@
+<div class="container-fluid">
+  <div class="row">{% include "../breadcrumb.html" %}</div>
+  <div class="article">
+    <div class="container-fluid">
+      <div class="row">
+        <div class="col-12">
+          <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+              <li class="breadcrumb-item"><a href="/article/admin/">Разделы</a></li>
+              <li class="breadcrumb-item active">{{ section.title.ru or section.title }}</li>
+            </ol>
+          </nav>
+
+          <div class="d-flex justify-content-between mb-3">
+            <h2>Подразделы: {{ section.title.ru or section.title }}</h2>
+            <a href="/article/admin/sub/create/{{ section.rid }}" class="btn btn-primary">+ Новый подраздел</a>
+          </div>
+
+          <div class="card">
+            <div class="card-body">
+              {% if subsections and subsections.length > 0 %}
+                <table class="table table-hover">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Название</th>
+                      <th>URL</th>
+                      <th>Сортировка</th>
+                      <th>Статьи</th>
+                      <th>Действия</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for sub in subsections %}
+                    <tr>
+                      <td>{{ loop.index }}</td>
+                      <td>
+                        <a href="/article/admin/sub/{{ sub.rid }}">
+                          {{ sub.title.ru or sub.title or '(без названия)' }}
+                        </a>
+                      </td>
+                      <td><code>{{ sub.url }}</code></td>
+                      <td>{{ sub.sortOrder or 0 }}</td>
+                      <td>
+                        <a href="/article/admin/sub/{{ sub.rid }}" class="btn btn-sm btn-outline-info">
+                          Статьи
+                        </a>
+                      </td>
+                      <td>
+                        <a href="/article/admin/sub/{{ sub.rid }}/edit" class="btn btn-sm btn-outline-secondary">✎</a>
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteSub('{{ sub.rid }}')">✕</button>
+                      </td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              {% else %}
+                <p class="text-muted">Нет подразделов. <a href="/article/admin/sub/create/{{ section.rid }}">Создать первый подраздел</a>.</p>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function deleteSub(rid) {
+  if (!confirm('Удалить подраздел со всеми статьями?')) return;
+  axios.delete('/article/admin/sub/' + rid, {
+    headers: { 'Content-Type': 'application/json' },
+    data: { csrf_token: '{{ csrf }}' }
+  }).then(function(r) { if (r.data.status === 200) location.reload(); });
+}
+</script>

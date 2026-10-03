@@ -430,8 +430,7 @@
 
       <aside class="page-aside sidebar" role="complementary">
         {% include "left-menu.html" %}
-        <!-- settings -->
-        {% include "menu-settings.html" %}
+        <!-- admin nav (placeholder) -->
       </aside>
 
       <main class="page-content" role="main">
@@ -448,9 +447,7 @@
       src="https://unpkg.com/axios/dist/axios.min.js"
     ></script>
     <script src="/public/js/style.js"></script>
-    {% if breadcrumb === "settings" %}
-    <script src="/public/js/settings.js"></script>
-    {% elif breadcrumb !== "settings" %}
+    {% if breadcrumb !== "article" %}
     <script rel="preload" src="/public/js/article.js"></script>
     <script src="/public/js/tinymce.min.js"></script>
     <script src="https://unpkg.com/dropzone@5/dist/min/dropzone.min.js"></script>
