@@ -6,57 +6,67 @@ import { createRequire } from 'module'
 import { csrfOk } from '../service/csrf.js'
 import { validateSectionInput, validateSubsectionInput, validateArticleInput } from '../service/validation.js'
 
-
 const require = createRequire(import.meta.url)
 const appRoot = pkg.path
 dotenv.config()
-/**  */
-const lang = require('../lang/ru')
-/** */
-const templateDir = path.join(appRoot, process.env.VIEW_DIR || 'view/html/')
 
-const errorHandler = (res, message) => {
-  return res.status(200).json({ message: message })
+const lang = require('../lang/ru')
+const templateDir = path.join(appRoot, process.env.VIEW_DIR || 'view/html/')
+const TEMPLATE_FILE = process.env.TEMPLATE_FILE || 'index'
+
+/**
+ * Отправить JSON-ответ с ошибкой
+ * @param {object} res — Express-like response
+ * @param {*} message — тело ошибки
+ */
+const jsonError = (res, message, status = 500) => {
+  res.status(status).json({ status, message })
+}
+
+/**
+ * Отрендерить HTML-страницу через render MC
+ * @param {object} req — запрос
+ * @param {object} res — ответ
+ * @param {object} data — данные для шаблона { page, title, breadcrumb, ... }
+ */
+const renderPage = async (req, res, data) => {
+  try {
+    const { response } = await res.app.ask('render', {
+      server: {
+        action: 'html',
+        meta: {
+          dir: templateDir,
+          page: TEMPLATE_FILE,
+          data: {
+            csrf: req.session.csrfSecret,
+            title: data.title || 'cloudFRT',
+            lang,
+            page: data.page,
+            breadcrumb: data.breadcrumb,
+            ...data.extra,
+          },
+        },
+      },
+    })
+    res.status(200).end(response.html)
+  } catch (err) {
+    console.log(`⚡ err::renderPage(${data.page}) => `, err)
+    jsonError(res, err)
+  }
 }
 
 const endpoints = async (app) => {
-  /**  */
   const db = await app.options.db
 
-  /**  */
+  // --- Главная дашборда ---
   app.get('/article/', async (req, res) => {
-    try {
-      /**  page */
-      // users = await db.getAll(limit);
-      const { response } = await res.app.ask('render', {
-        server: {
-          action: 'html',
-          meta: {
-            dir: templateDir, // directory article template
-            page: process.env.TEMPLATE_FILE, // file template
-            // data for template
-            data: {
-              csrf: req.session.csrfSecret,
-              title: 'Dashboard | cloudFRT',
-              lang: lang,
-              page: './page/main-content.html',
-              breadcrumb: 'article',
-              number: 1,
-            },
-          },
-        },
-      })
-
-      // page = response.html
-
-      res.status(200).end(response.html)
-    } catch (err) {
-      console.log('⚡ err::/article/', err)
-      return errorHandler(res, err)
-    }
+    renderPage(req, res, {
+      page: './page/main-content.html',
+      title: 'Dashboard | cloudFRT',
+      breadcrumb: 'article',
+      extra: { number: 1 },
+    })
   })
-
-
 
   // ============================================================
   //  Admin: Sections (разделы)
@@ -66,82 +76,41 @@ const endpoints = async (app) => {
   app.get('/article/admin/', async (req, res) => {
     try {
       const sections = await db.getSections()
-      const { response } = await res.app.ask('render', {
-        server: {
-          action: 'html',
-          meta: {
-            dir: templateDir,
-            page: process.env.TEMPLATE_FILE,
-            data: {
-              csrf: req.session.csrfSecret,
-              title: 'Разделы статей | cloudFRT',
-              lang: lang,
-              page: './page/article/sections.html',
-              breadcrumb: 'article-admin',
-              sections: sections,
-            },
-          },
-        },
+      renderPage(req, res, {
+        page: './page/article/sections.html',
+        title: 'Разделы статей | cloudFRT',
+        breadcrumb: 'article-admin',
+        extra: { sections },
       })
-      res.status(200).end(response.html)
     } catch (err) {
       console.log('⚡ err::/article/admin/', err)
-      errorHandler(res, err)
+      jsonError(res, err)
     }
   })
 
   // --- Форма создания раздела ---
   app.get('/article/admin/section/create', async (req, res) => {
-    try {
-      const { response } = await res.app.ask('render', {
-        server: {
-          action: 'html',
-          meta: {
-            dir: templateDir,
-            page: process.env.TEMPLATE_FILE,
-            data: {
-              csrf: req.session.csrfSecret,
-              title: 'Создать раздел | cloudFRT',
-              lang: lang,
-              page: './page/article/section-form.html',
-              breadcrumb: 'section-create',
-              section: null,
-            },
-          },
-        },
-      })
-      res.status(200).end(response.html)
-    } catch (err) {
-      console.log('⚡ err::section/create', err)
-      errorHandler(res, err)
-    }
+    renderPage(req, res, {
+      page: './page/article/section-form.html',
+      title: 'Создать раздел | cloudFRT',
+      breadcrumb: 'section-create',
+      extra: { section: null },
+    })
   })
 
   // --- Форма редактирования раздела ---
   app.get('/article/admin/section/:rid/edit', async (req, res) => {
     try {
       const section = await db.getSection(req.params.rid)
-      const { response } = await res.app.ask('render', {
-        server: {
-          action: 'html',
-          meta: {
-            dir: templateDir,
-            page: process.env.TEMPLATE_FILE,
-            data: {
-              csrf: req.session.csrfSecret,
-              title: 'Редактировать раздел | cloudFRT',
-              lang: lang,
-              page: './page/article/section-form.html',
-              breadcrumb: 'section-edit',
-              section: section,
-            },
-          },
-        },
+      renderPage(req, res, {
+        page: './page/article/section-form.html',
+        title: 'Редактировать раздел | cloudFRT',
+        breadcrumb: 'section-edit',
+        extra: { section },
       })
-      res.status(200).end(response.html)
     } catch (err) {
       console.log('⚡ err::section/edit', err)
-      errorHandler(res, err)
+      jsonError(res, err)
     }
   })
 
@@ -149,29 +118,16 @@ const endpoints = async (app) => {
   app.get('/article/admin/section/:rid', async (req, res) => {
     try {
       const section = await db.getSection(req.params.rid)
-      const subs = await db.getSubsections(req.params.rid)
-      const { response } = await res.app.ask('render', {
-        server: {
-          action: 'html',
-          meta: {
-            dir: templateDir,
-            page: process.env.TEMPLATE_FILE,
-            data: {
-              csrf: req.session.csrfSecret,
-              title: section?.title?.ru || 'Подразделы | cloudFRT',
-              lang: lang,
-              page: './page/article/subsections.html',
-              breadcrumb: 'subsections',
-              section: section,
-              subsections: subs,
-            },
-          },
-        },
+      const subsections = await db.getSubsections(req.params.rid)
+      renderPage(req, res, {
+        page: './page/article/subsections.html',
+        title: section?.title?.ru || 'Подразделы | cloudFRT',
+        breadcrumb: 'subsections',
+        extra: { section, subsections },
       })
-      res.status(200).end(response.html)
     } catch (err) {
       console.log('⚡ err::section/:rid', err)
-      errorHandler(res, err)
+      jsonError(res, err)
     }
   })
 
@@ -192,7 +148,7 @@ const endpoints = async (app) => {
       res.status(200).json({ status: 200, done: false, err: result.err })
     } catch (err) {
       console.log('⚡ err::POST section', err)
-      errorHandler(res, err)
+      jsonError(res, err)
     }
   })
 
@@ -210,7 +166,7 @@ const endpoints = async (app) => {
       res.status(200).json({ status: 200, result })
     } catch (err) {
       console.log('⚡ err::PUT section', err)
-      errorHandler(res, err)
+      jsonError(res, err)
     }
   })
 
@@ -224,7 +180,7 @@ const endpoints = async (app) => {
       res.status(200).json({ status: 200, result })
     } catch (err) {
       console.log('⚡ err::DELETE section', err)
-      errorHandler(res, err)
+      jsonError(res, err)
     }
   })
 
@@ -234,58 +190,27 @@ const endpoints = async (app) => {
 
   // --- Форма создания подраздела ---
   app.get('/article/admin/sub/create/:parentRid', async (req, res) => {
-    try {
-      const { response } = await res.app.ask('render', {
-        server: {
-          action: 'html',
-          meta: {
-            dir: templateDir,
-            page: process.env.TEMPLATE_FILE,
-            data: {
-              csrf: req.session.csrfSecret,
-              title: 'Создать подраздел | cloudFRT',
-              lang: lang,
-              page: './page/article/subsection-form.html',
-              breadcrumb: 'subsection-create',
-              parentRid: req.params.parentRid,
-              subsection: null,
-            },
-          },
-        },
-      })
-      res.status(200).end(response.html)
-    } catch (err) {
-      console.log('⚡ err::sub/create', err)
-      errorHandler(res, err)
-    }
+    renderPage(req, res, {
+      page: './page/article/subsection-form.html',
+      title: 'Создать подраздел | cloudFRT',
+      breadcrumb: 'subsection-create',
+      extra: { parentRid: req.params.parentRid, subsection: null },
+    })
   })
 
   // --- Форма редактирования подраздела ---
   app.get('/article/admin/sub/:rid/edit', async (req, res) => {
     try {
       const subsection = await db.getSubsection(req.params.rid)
-      const { response } = await res.app.ask('render', {
-        server: {
-          action: 'html',
-          meta: {
-            dir: templateDir,
-            page: process.env.TEMPLATE_FILE,
-            data: {
-              csrf: req.session.csrfSecret,
-              title: 'Редактировать подраздел | cloudFRT',
-              lang: lang,
-              page: './page/article/subsection-form.html',
-              breadcrumb: 'subsection-edit',
-              parentRid: null,
-              subsection: subsection,
-            },
-          },
-        },
+      renderPage(req, res, {
+        page: './page/article/subsection-form.html',
+        title: 'Редактировать подраздел | cloudFRT',
+        breadcrumb: 'subsection-edit',
+        extra: { parentRid: null, subsection },
       })
-      res.status(200).end(response.html)
     } catch (err) {
       console.log('⚡ err::sub/edit', err)
-      errorHandler(res, err)
+      jsonError(res, err)
     }
   })
 
@@ -294,28 +219,15 @@ const endpoints = async (app) => {
     try {
       const subsection = await db.getSubsection(req.params.rid)
       const articles = await db.getArticles(req.params.rid)
-      const { response } = await res.app.ask('render', {
-        server: {
-          action: 'html',
-          meta: {
-            dir: templateDir,
-            page: process.env.TEMPLATE_FILE,
-            data: {
-              csrf: req.session.csrfSecret,
-              title: subsection?.title?.ru || 'Статьи | cloudFRT',
-              lang: lang,
-              page: './page/article/articles.html',
-              breadcrumb: 'articles',
-              subsection: subsection,
-              articles: articles,
-            },
-          },
-        },
+      renderPage(req, res, {
+        page: './page/article/articles.html',
+        title: subsection?.title?.ru || 'Статьи | cloudFRT',
+        breadcrumb: 'articles',
+        extra: { subsection, articles },
       })
-      res.status(200).end(response.html)
     } catch (err) {
       console.log('⚡ err::sub/:rid', err)
-      errorHandler(res, err)
+      jsonError(res, err)
     }
   })
 
@@ -335,12 +247,12 @@ const endpoints = async (app) => {
       }
       const result = await db.createSubsection(obj, parentRid)
       if (result.done) {
-        return res.status(201).json({ status: 201, rid: result.message?.[0]?.rid || result.message?.[0]?.['@rid'] })
+        return res.status(201).json({ status: 201, rid: result.rid })
       }
       res.status(200).json({ status: 200, done: false, err: result.err })
     } catch (err) {
       console.log('⚡ err::POST sub', err)
-      errorHandler(res, err)
+      jsonError(res, err)
     }
   })
 
@@ -358,7 +270,7 @@ const endpoints = async (app) => {
       res.status(200).json({ status: 200, result })
     } catch (err) {
       console.log('⚡ err::PUT sub', err)
-      errorHandler(res, err)
+      jsonError(res, err)
     }
   })
 
@@ -372,7 +284,7 @@ const endpoints = async (app) => {
       res.status(200).json({ status: 200, result })
     } catch (err) {
       console.log('⚡ err::DELETE sub', err)
-      errorHandler(res, err)
+      jsonError(res, err)
     }
   })
 
@@ -382,58 +294,27 @@ const endpoints = async (app) => {
 
   // --- Форма создания статьи ---
   app.get('/article/admin/create/:parentRid', async (req, res) => {
-    try {
-      const { response } = await res.app.ask('render', {
-        server: {
-          action: 'html',
-          meta: {
-            dir: templateDir,
-            page: process.env.TEMPLATE_FILE,
-            data: {
-              csrf: req.session.csrfSecret,
-              title: 'Создать статью | cloudFRT',
-              lang: lang,
-              page: './page/article/article-form.html',
-              breadcrumb: 'article-create',
-              parentRid: req.params.parentRid,
-              article: null,
-            },
-          },
-        },
-      })
-      res.status(200).end(response.html)
-    } catch (err) {
-      console.log('⚡ err::article/create', err)
-      errorHandler(res, err)
-    }
+    renderPage(req, res, {
+      page: './page/article/article-form.html',
+      title: 'Создать статью | cloudFRT',
+      breadcrumb: 'article-create',
+      extra: { parentRid: req.params.parentRid, article: null },
+    })
   })
 
   // --- Форма редактирования статьи ---
   app.get('/article/admin/:rid/edit', async (req, res) => {
     try {
       const article = await db.getArticle(req.params.rid)
-      const { response } = await res.app.ask('render', {
-        server: {
-          action: 'html',
-          meta: {
-            dir: templateDir,
-            page: process.env.TEMPLATE_FILE,
-            data: {
-              csrf: req.session.csrfSecret,
-              title: 'Редактировать статью | cloudFRT',
-              lang: lang,
-              page: './page/article/article-form.html',
-              breadcrumb: 'article-edit',
-              parentRid: null,
-              article: article,
-            },
-          },
-        },
+      renderPage(req, res, {
+        page: './page/article/article-form.html',
+        title: 'Редактировать статью | cloudFRT',
+        breadcrumb: 'article-edit',
+        extra: { parentRid: null, article },
       })
-      res.status(200).end(response.html)
     } catch (err) {
       console.log('⚡ err::article/edit', err)
-      errorHandler(res, err)
+      jsonError(res, err)
     }
   })
 
@@ -453,12 +334,12 @@ const endpoints = async (app) => {
       }
       const result = await db.createArticle(obj, parentRid)
       if (result.done) {
-        return res.status(201).json({ status: 201, rid: result.message?.[0]?.rid || result.message?.[0]?.['@rid'] })
+        return res.status(201).json({ status: 201, rid: result.rid })
       }
       res.status(200).json({ status: 200, done: false, err: result.err })
     } catch (err) {
       console.log('⚡ err::POST article', err)
-      errorHandler(res, err)
+      jsonError(res, err)
     }
   })
 
@@ -476,7 +357,7 @@ const endpoints = async (app) => {
       res.status(200).json({ status: 200, result })
     } catch (err) {
       console.log('⚡ err::PUT article', err)
-      errorHandler(res, err)
+      jsonError(res, err)
     }
   })
 
@@ -490,7 +371,7 @@ const endpoints = async (app) => {
       res.status(200).json({ status: 200, result })
     } catch (err) {
       console.log('⚡ err::publish', err)
-      errorHandler(res, err)
+      jsonError(res, err)
     }
   })
 
@@ -504,7 +385,7 @@ const endpoints = async (app) => {
       res.status(200).json({ status: 200, result })
     } catch (err) {
       console.log('⚡ err::unpublish', err)
-      errorHandler(res, err)
+      jsonError(res, err)
     }
   })
 
@@ -518,7 +399,7 @@ const endpoints = async (app) => {
       res.status(200).json({ status: 200, result })
     } catch (err) {
       console.log('⚡ err::DELETE article', err)
-      errorHandler(res, err)
+      jsonError(res, err)
     }
   })
 

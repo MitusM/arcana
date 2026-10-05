@@ -114,4 +114,4 @@ og-cache/
 
 /core/session
 /core/micromq
-/images/
+/images/.bak.*
