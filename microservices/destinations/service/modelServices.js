@@ -156,10 +156,10 @@ class Model extends PDO {
   async listAll(limit = 100, offset = 0) {
     const lim = parseInt(limit, 10) || 100
     const off = parseInt(offset, 10) || 0
+    // ВАЖНО: ArcadeDB PG Wire НЕ принимает параметризованные LIMIT/SKIP — только инлайн
     return this.queryAll(
       `SELECT @rid as rid, slug, title, h1, level, is_hub, priority, image, status, created
-       FROM Dest ORDER BY created DESC SKIP $1 LIMIT $2`,
-      [off, lim],
+       FROM Dest ORDER BY created DESC SKIP ${off} LIMIT ${lim}`,
     )
   }
 
@@ -303,11 +303,12 @@ class Model extends PDO {
   // --- Список прямых детей (published) ---
   async listChildren(rid, limit = 50) {
     const lim = parseInt(limit, 10) || 50
+    // ВАЖНО: ArcadeDB PG Wire НЕ принимает параметризованные LIMIT — только инлайн
     return this.queryAll(
       `SELECT @rid as rid, slug, title, h1, level, image, priority, status, content FROM Dest
        WHERE $1 IN out('PART_OF') AND status = 'published'
-       ORDER BY priority DESC LIMIT $2`,
-      [rid, lim],
+       ORDER BY priority DESC LIMIT ${lim}`,
+      [rid],
     )
   }
 
@@ -315,10 +316,11 @@ class Model extends PDO {
   async listChildrenAdmin(rid, limit = 50, offset = 0) {
     const lim = parseInt(limit, 10) || 50
     const off = parseInt(offset, 10) || 0
+    // ВАЖНО: ArcadeDB PG Wire НЕ принимает параметризованные SKIP/LIMIT — только инлайн
     return this.queryAll(
       `SELECT @rid as rid, slug, title, h1, level, image, priority, is_hub, status FROM Dest
-       WHERE $1 IN out('PART_OF') ORDER BY priority DESC SKIP $2 LIMIT $3`,
-      [rid, off, lim],
+       WHERE $1 IN out('PART_OF') ORDER BY priority DESC SKIP ${off} LIMIT ${lim}`,
+      [rid],
     )
   }
 
@@ -336,10 +338,10 @@ class Model extends PDO {
   async listRootAdmin(limit = 50, offset = 0) {
     const lim = parseInt(limit, 10) || 50
     const off = parseInt(offset, 10) || 0
+    // ВАЖНО: ArcadeDB PG Wire НЕ принимает параметризованные SKIP/LIMIT — только инлайн
     return this.queryAll(
       `SELECT @rid as rid, slug, title, h1, level, image, priority, is_hub, status FROM Dest
-       WHERE out('PART_OF').size() = 0 ORDER BY priority DESC SKIP $1 LIMIT $2`,
-      [off, lim],
+       WHERE out('PART_OF').size() = 0 ORDER BY priority DESC SKIP ${off} LIMIT ${lim}`,
     )
   }
 
@@ -427,16 +429,17 @@ class Model extends PDO {
     if (!parents.length) return []
     const parentsList = Array.isArray(parents) ? parents : [parents]
     const clauses = []
-    const params = [rid, lim]
+    const params = [rid]
     for (const p of parentsList) {
       clauses.push(`$${params.length + 1} IN out('PART_OF')`)
       params.push(p)
     }
+    // ВАЖНО: ArcadeDB PG Wire НЕ принимает параметризованные LIMIT — только инлайн
     return this.queryAll(
       `SELECT @rid as rid, slug, title, h1, level, image, priority, status, content FROM Dest
        WHERE (${clauses.join(' OR ')})
          AND @rid <> $1 AND status = 'published'
-       ORDER BY priority DESC LIMIT $2`,
+       ORDER BY priority DESC LIMIT ${lim}`,
       params,
     )
   }
@@ -484,11 +487,12 @@ class Model extends PDO {
   async searchDest(q, limit = 50) {
     const lim = parseInt(limit, 10) || 50
     const like = `%${q}%`
+    // ВАЖНО: ArcadeDB PG Wire НЕ принимает параметризованные LIMIT — только инлайн
     const rows = await this.queryAll(
       `SELECT @rid as rid, slug, title, h1, level, image, is_hub, status, $path AS path FROM (
         TRAVERSE in('PART_OF') FROM (SELECT FROM Dest WHERE out('PART_OF').size() = 0)
-      ) WHERE (slug ILIKE $1 OR title ILIKE $1) ORDER BY title LIMIT $2`,
-      [like, lim],
+      ) WHERE (slug ILIKE $1 OR title ILIKE $1) ORDER BY title LIMIT ${lim}`,
+      [like],
     )
     const all = await this.queryAll(
       `SELECT @rid as rid, slug FROM (
@@ -755,16 +759,17 @@ class Model extends PDO {
     const parents = (parentRow && parentRow.p) || []
     if (!parents.length) return []
     const clauses = []
-    const params = [destRid, lim, typeRid]
+    const params = [destRid, typeRid]
     for (const p of parents) {
       clauses.push(`$${params.length + 1} IN out('PART_OF')`)
       params.push(p)
     }
+    // ВАЖНО: ArcadeDB PG Wire НЕ принимает параметризованные LIMIT — только инлайн
     return this.queryAll(
       `SELECT @rid as rid, slug, title, h1, level, image, priority, status, content FROM Dest
        WHERE (${clauses.join(' OR ')}) AND @rid <> $1 AND status = 'published'
-         AND $3 IN out('HAS_TYPE')
-       ORDER BY priority DESC LIMIT $2`,
+         AND $2 IN out('HAS_TYPE')
+       ORDER BY priority DESC LIMIT ${lim}`,
       params,
     )
   }
@@ -776,12 +781,13 @@ class Model extends PDO {
       [typeSlug],
     )
     if (!type) return []
+    // ВАЖНО: ArcadeDB PG Wire НЕ принимает параметризованные LIMIT — только инлайн
     return this.queryAll(
       `SELECT @rid as rid, slug, title, h1, level, image, priority, description, content FROM Dest
        WHERE $1 IN out('PART_OF') AND status = 'published'
          AND $2 IN out('HAS_TYPE')
-       ORDER BY priority DESC LIMIT $3`,
-      [parentRid, type['@rid'], lim],
+       ORDER BY priority DESC LIMIT ${lim}`,
+      [parentRid, type['@rid']],
     )
   }
 }
