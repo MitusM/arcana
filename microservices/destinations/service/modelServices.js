@@ -1,8 +1,14 @@
 // === === === === === === === === === === === ===
 // modelServices.js — модель Dest (гео-каталог мест) для МС destinations
-// Аркана-версия: ArcadeDB через PG Wire.
-// Исправлено: все RID и строки параметризованы ($1), process.exit() убран,
-//             инлайн-экранирование удалено, добавлены транзакции.
+//
+// Класс-вершина Dest в OrientDB. Иерархия и связи — ГРАФ-РЁБРАМИ (см. schema.sql):
+//   Dest -PART_OF-> Dest        (Телецкое ∈ Горный Алтай ∈ Россия)
+//   Dest -HAS_TRIP-> Trip       (место → поездки trips)
+//   Dest -HAS_ARTICLE-> Article (место → статьи /stati/)
+//   Dest -HAS_MAP-> Map         (место → карты maps)
+//
+// Етап 0: базовые операции (createDest, getBySlug, listChildren, parents chain).
+// Рендер хабов и полноценный разбор пути — этапы 2-4.
 // === === === === === === === === === === === ===
 import { PDO } from './dbServices.js'
 
@@ -11,145 +17,116 @@ class Model extends PDO {
     super(options)
   }
 
-  // ============================================================
-  //  Примитивы
-  // ============================================================
-
+  // ---------- Базовые операции с ArcadeDB (через pg) ----------
   async queryAll(query, params) {
     try {
-      return await this.db.queryAll(query, params)
+      const res = await this.db.pool.query(query, params || [])
+      return res.rows
     } catch (err) {
       console.log('⚡ err::queryAll => ', err)
-      return []
+      process.exit()
     }
   }
 
   async queryOne(query, params) {
     try {
-      return await this.db.queryOne(query, params)
+      const res = await this.db.pool.query(query, params || [])
+      return res.rows[0] || null
     } catch (err) {
       console.log('⚡ err::queryOne => ', err)
-      return null
+      process.exit()
     }
   }
 
   async insert(query, params) {
     try {
-      const res = await this.db.command(query, params)
-      return { message: res, type: 'insert', done: true }
+      const res = await this.db.pool.query(query, params || [])
+      return { message: res.rows, type: 'insert', done: true }
     } catch (err) {
       console.log('⚡ err::insert => ', err)
       return { err: err, done: false }
     }
   }
 
-  async createEdge(edgeClass, from, to) {
+  async create(edgeClass, from, to) {
     try {
-      return await this.db.createEdge(edgeClass, from, to)
+      const res = await this.db.pool.query(
+        `CREATE EDGE ${edgeClass} FROM $1 TO $2`,
+        [from, to]
+      )
+      return res.rows[0] || null
     } catch (err) {
-      console.log('⚡ err::createEdge => ', err)
-      return { err: err, done: false }
+      console.log('⚡ err::create => ', err)
+      process.exit()
     }
   }
 
   async command(query, params = []) {
     try {
-      return await this.db.command(query, params)
+      const res = await this.db.pool.query(query, params)
+      return res.rows
     } catch (err) {
       console.log('⚡ err::command => ', err)
-      return { err: err, done: false }
+      return err
     }
   }
 
-  // ============================================================
-  //  Утилиты
-  // ============================================================
-
-  /** Удалить вершину с рёбрами в транзакции */
-  async _deleteVertex(rid) {
-    try {
-      await this.db.command('BEGIN')
-      await this.db.command('DELETE EDGE FROM $1', [rid])
-      await this.db.command('DELETE EDGE TO $1', [rid])
-      await this.db.command('DELETE VERTEX $1', [rid])
-      await this.db.command('COMMIT')
-      return { done: true }
-    } catch (err) {
-      try { await this.db.command('ROLLBACK') } catch (_) { /* ignore */ }
-      console.log('⚡ err::_deleteVertex => ', err)
-      return { err, done: false }
-    }
-  }
-
-  /** Создать точку OPoint для PG Wire из lng/lat.
-   *  Возвращает SQL-выражение (литерал объекта) или null.
-   */
-  _pointLiteral(lng, lat) {
-    if (lng == null || lat == null) return null
-    const ln = Number(lng)
-    const lt = Number(lat)
-    if (Number.isNaN(ln) || Number.isNaN(lt)) return null
-    return `{'@type':'OPoint','coordinates':[${ln},${lt}]}`
-  }
-
-  // ============================================================
-  //  Основные методы Dest
-  // ============================================================
-
-  /** Создать узел места (вершина Dest). parentRid опционален.
-   *  ВАЖНО: ArcadeDB CREATE VERTEX не принимает $1 для строковых
-   *  значений в SET. Параметризуем через INSERT-синтаксис (как в article).
-   */
+  // --- Создать узел места (вершина Dest) ---
+  // parentRid опционален — при указании создаётся ребро PART_OF.
+  // ПАРАМЕТРЫ ИНЛАЙНЯТСЯ в SQL (orientjs в этом стеке не подставляет
+  // ни :named, ни позиционные ? — проверено; инлайн — как в article).
+  //
+  // ПУБЛИКАЦИЯ: новый узел создаётся как ЧЕРНОВИК (status='draft'), пока
+  // админ не нажмёт «Опубликовать». Публичные SEO-страницы показывают
+  // только status='published', причём draft прячет и всё своё поддерево.
   async createDest({
-    slug, title, h1, level, description, content, lat, lng,
-    image, is_hub, priority, parentRid, status,
+    slug,
+    title,
+    h1,
+    level, // country | region | place | attraction
+    description,
+    content,
+    lat,
+    lng,
+    image,
+    is_hub,
+    priority,
+    parentRid,
+    status, // 'draft' (default) | 'published'
   }) {
+    // экранировать строку для инлайна в SQL (одинарные кавычки + \n/\r/\\)
+    const sq = (v) => this._sqlStr(v)
+    const num = (v, d) => (v == null || v === '' ? d : v)
+    // content хранится как строка (fix 31.08).
+    const embed = (v) => (v == null || v === '' ? 'null' : this._sqlStr(v))
+
+    const loc = lat != null && lng != null
+      ? `{'@type':'OPoint','coordinates':[${num(lng, 0)},${num(lat, 0)}]}`
+      : null
+    const locSql = loc ? `, location = ${loc}` : ''
+
+    // по умолчанию — черновик (новые материалы не появляются на сайте, пока
+    // не опубликованы вручную).
     const st = status === 'published' ? 'published' : 'draft'
-    const locLit = this._pointLiteral(lng, lat)
-    const isHub = is_hub === undefined ? true : !!is_hub
-    const prio = (priority == null || priority === '') ? 0.5 : Number(priority)
-    const finalPrio = Number.isNaN(prio) ? 0.5 : prio
 
-    const sql = `INSERT INTO Dest SET
-      slug=:slug, title=:title, h1=:h1,
-      level=:level, description=:description,
-      content=:content, image=:image,
-      is_hub=:is_hub, priority=:priority, status=:status,
-      created=sysdate()${locLit ? ', location=' + locLit : ''}`
+    const res = await this.insert(
+      `CREATE VERTEX Dest SET
+        slug = ${sq(slug)}, title = ${sq(title)}, h1 = ${sq(h1 || title)},
+        level = ${sq(level || 'place')}, description = ${sq(description || '')},
+        summary = ${sq(summary || '')},
+        content = ${embed(content)}, image = ${sq(image || '')},
+        is_hub = ${is_hub === undefined ? true : !!is_hub},
+        priority = ${num(priority, 0.5)}, status = '${st}',
+        created = sysdate()${locSql}`
+    )
+    if (!res.done || !res.message) return res
+    const dest = Array.isArray(res.message) ? res.message[0] : res.message
 
-    const result = await this.insert(sql, {
-      params: {
-        slug: String(slug || ''),
-        title: String(title || ''),
-        h1: String(h1 || title || ''),
-        level: String(level || 'place'),
-        description: String(description || ''),
-        content: content || null,
-        image: String(image || ''),
-        is_hub: isHub,
-        priority: finalPrio,
-        status: st,
-      },
-    })
-
-    if (!result.done || !result.message || !result.message.length) return result
-    const destRow = result.message[0]
-    const destRid = destRow.rid || destRow['@rid']
-
-    // ребро иерархии PART_OF — в транзакции
-    if (parentRid && destRid) {
-      try {
-        await this.db.command('BEGIN')
-        await this.db.createEdge('PART_OF', destRid, parentRid)
-        await this.db.command('COMMIT')
-      } catch (err) {
-        try { await this.db.command('ROLLBACK') } catch (_) {}
-        console.log('⚡ err::createDest edge => ', err)
-        await this.command('DELETE VERTEX $1', [destRid])
-        return { err, done: false }
-      }
+    // ребро иерархии PART_OF, если задан родитель
+    if (parentRid && dest['@rid']) {
+      await this.create('PART_OF', dest['@rid'], parentRid)
     }
-    return { done: true, dest: destRow }
+    return { done: true, dest }
   }
 
   // --- Список всех узлов (админ) ---
@@ -158,21 +135,24 @@ class Model extends PDO {
     const off = parseInt(offset, 10) || 0
     return this.queryAll(
       `SELECT @rid as rid, slug, title, h1, level, is_hub, priority, image, status, created
-       FROM Dest ORDER BY created DESC SKIP $1 LIMIT $2`,
-      [off, lim],
+       FROM Dest ORDER BY created DESC SKIP ${off} LIMIT ${lim}`
     )
   }
 
   // --- Узел по RID (админ) ---
   async getByRid(rid) {
-    return this.queryOne('SELECT *, @rid as rid FROM $1', [rid])
+    return this.queryOne(`SELECT *, @rid as rid FROM ${rid}`)
   }
 
-  /** Родитель узла (первый по out('PART_OF')) или null. */
+  /** Родитель узла (первый по out('PART_OF')) или null. Используется админ-UI.
+   *
+   * ВАЖНО (ArcadeDB PG Wire): out('PART_OF') возвращает Java-объект-строку
+   * (com.arcadedb.graph.GraphEngine$...), а не массив RID'ов. Используем
+   * out('PART_OF').@rid — он отдаёт массив RID-строк, который pg драйвер
+   * парсит корректно. */
   async getParentRid(rid) {
     const row = await this.queryOne(
-      `SELECT out('PART_OF').@rid as parents FROM $1 WHERE out('PART_OF').size() > 0`,
-      [rid],
+      `SELECT out('PART_OF').@rid as parents FROM ${rid} WHERE out('PART_OF').size() > 0`
     )
     const p = row && row.parents
     if (Array.isArray(p) && p.length) return String(p[0])
@@ -181,283 +161,283 @@ class Model extends PDO {
 
   // --- Проверка: существует ли slug (внутри родителя или глобально) ---
   async slugExists(slug, parentRid, excludeRid) {
-    let sql, params
+    const s = String(slug).replace(/'/g, "\\'")
+    const exc = excludeRid ? ` AND @rid <> ${excludeRid}` : ''
     if (parentRid) {
-      if (excludeRid) {
-        sql = 'SELECT @rid FROM Dest WHERE slug = $1 AND $2 IN out(\'PART_OF\') AND @rid <> $3'
-        params = [slug, parentRid, excludeRid]
-      } else {
-        sql = 'SELECT @rid FROM Dest WHERE slug = $1 AND $2 IN out(\'PART_OF\')'
-        params = [slug, parentRid]
-      }
-    } else {
-      if (excludeRid) {
-        sql = 'SELECT @rid FROM Dest WHERE slug = $1 AND @rid <> $2'
-        params = [slug, excludeRid]
-      } else {
-        sql = 'SELECT @rid FROM Dest WHERE slug = $1'
-        params = [slug]
-      }
+      const r = await this.queryOne(
+        `SELECT @rid FROM Dest WHERE slug = '${s}' AND ${parentRid} IN out('PART_OF')${exc}`
+      )
+      return !!r
     }
-    const r = await this.queryOne(sql, params)
+    const r = await this.queryOne(`SELECT @rid FROM Dest WHERE slug = '${s}'${exc}`)
     return !!r
   }
 
-  // --- Обновить узел (белый список полей) ---
+  // --- Обновить узел (безопасно: белый список полей + ЭКРАН-пингование) ---
+  // Поля, которые можно менять. Безопасно от SQL-инъекции (нельзя произвольный set).
   async updateDest(rid, fields) {
     const ALLOWED = ['slug', 'title', 'h1', 'level', 'description', 'content', 'image', 'summary', 'thumbnail', 'is_hub', 'priority', 'status']
+    const sq = (v) => this._sqlStr(v) // экранирует ' и \n/\r/\\
+    const num = (v) => (v == null ? 'null' : String(v))
+    // content — EMBEDDED: пустое → null
+    const embed = (v) => (v == null || v === '' ? 'null' : this._sqlStr(v))
     const set = []
-    const values = []
 
     for (const key of ALLOWED) {
       if (fields[key] === undefined) continue
-      values.push(key === 'content' ? (fields[key] || null) : fields[key])
-      set.push(`${key}=$${values.length}`)
+      if (key === 'content') {
+        set.push(`content = ${embed(fields[key])}`)
+      } else if (key === 'priority') {
+        const n = parseFloat(fields[key])
+        set.push(`priority = ${Number.isNaN(n) ? 0.5 : n}`)
+      } else if (key === 'is_hub') {
+        set.push(`is_hub = ${fields[key] ? true : false}`)
+      } else if (key === 'status') {
+        // только черновик/опубликовано (игнорируем мусор)
+        const st = fields[key] === 'published' ? 'published' : 'draft'
+        set.push(`status = '${st}'`)
+      } else {
+        set.push(`${key} = ${sq(fields[key])}`)
+      }
     }
 
-    // координаты
+    // координаты — ArcadeDB PG Wire: объектный литерал вместо geo.geomFromText
     if (fields.lat != null && fields.lng != null) {
-      const locLit = this._pointLiteral(fields.lng, fields.lat)
-      if (locLit) set.push(`location = ${locLit}`)
+      set.push(`location = {'@type':'OPoint','coordinates':[${num(fields.lng)},${num(fields.lat)}]}`)
     }
 
     if (!set.length) return { done: true, updated: 0 }
-    const res = await this.command(
-      `UPDATE $1 SET ${set.join(', ')}`,
-      [rid, ...values],
-    )
-    return { done: true, updated: (res && res.done === undefined ? 1 : 0) }
+    const res = await this.command(`UPDATE ${rid} SET ${set.join(', ')}`)
+    return { done: true, updated: (res && res.length) || 0 }
   }
 
-  // --- Сменить статус публикации узла ---
+  // --- Сменить статус публикации узла: 'draft' | 'published' ---
   async setStatus(rid, status) {
     const st = status === 'published' ? 'published' : 'draft'
-    await this.command(
-      'UPDATE $1 SET status = $2, updated=sysdate()',
-      [rid, st],
-    )
-    return { done: true, updated: 1 }
+    const res = await this.command(`UPDATE ${rid} SET status = '${st}'`)
+    return { done: true, updated: (res && res.length) || 0 }
   }
 
-  // --- Множество скрытых RID (draft-узлы + поддерево) ---
+  // --- Множество СКРЫТЫХ RID (draft-узлы + всё их поддерево). ---
+  // Правило: черновик не показывается и прячет всех своих потомков (ребёнок
+  // достижим только через опубликованных предков). Поэтому скрытые = все
+  // draft-вершины и всё, что под ними вниз по PART_OF.
   async getClosedRids() {
     const rows = await this.queryAll(
       `SELECT @rid as rid FROM (
          TRAVERSE in('PART_OF') FROM (SELECT FROM Dest WHERE status = 'draft')
-       )`,
+       )`
     )
     const set = new Set()
     for (const r of rows || []) set.add(String(r.rid))
     return set
   }
 
-  // --- Сменить родителя ---
+  // --- Сменить родителя: удалить старые PART_OF из узла, добавить новое ---
+  //
+  // ВАЖНО (ArcadeDB PG Wire): DELETE EDGE не парсится. Удаляем ребро как запись.
+  // SELECT @rid FROM PART_OF WHERE out = X → DELETE FROM <rid>
   async moveDest(rid, newParentRid) {
-    try {
-      await this.db.command('BEGIN')
-      const edges = await this.db.queryAll(
-        'SELECT @rid as rid FROM PART_OF WHERE out = $1',
-        [rid],
-      )
-      for (const e of edges || []) {
-        if (e && e.rid) await this.db.command('DELETE FROM $1', [e.rid])
-      }
-      if (newParentRid) {
-        await this.db.createEdge('PART_OF', rid, newParentRid)
-      }
-      await this.db.command('COMMIT')
-      return { done: true }
-    } catch (err) {
-      try { await this.db.command('ROLLBACK') } catch (_) {}
-      console.log('⚡ err::moveDest => ', err)
-      return { err, done: false }
+    // найти все рёбра PART_OF, где rid — исходящий (ребёнок)
+    const edges = await this.queryAll(
+      `SELECT @rid as rid FROM PART_OF WHERE out = ${rid}`
+    )
+    for (const e of edges || []) {
+      if (e && e.rid) await this.command(`DELETE FROM ${e.rid}`)
     }
+    if (newParentRid) {
+      await this.create('PART_OF', rid, newParentRid)
+    }
+    return { done: true }
   }
 
-  // --- Является ли maybeChildRid потомком rid ---
+  // --- Является ли maybeChildRid потомком rid (для защиты от циклов при move) ---
   async isDescendant(rid, maybeChildRid) {
     if (!rid || !maybeChildRid) return false
-    const rs = String(rid)
-    const mc = String(maybeChildRid)
-    if (rs === mc) return true
+    if (String(rid) === String(maybeChildRid)) return true
+    // идём от maybeChildRid вверх по PART_OF: если встречаем rid — значит он потомок
     const rows = await this.queryAll(
       `SELECT @rid as rid FROM (
-        TRAVERSE out('PART_OF') FROM $1
-      ) WHERE @rid = $2`,
-      [mc, rs],
+        TRAVERSE out('PART_OF') FROM ${maybeChildRid}
+      ) WHERE @rid = ${rid}`
     )
     return rows.length > 0
   }
 
-  // --- Найти узел по slug ---
+  // --- Найти узел по slug (внутри родителя или глобально) ---
+  // Направление рёбер PART_OF: ребёнок -PART_OF-> родитель.
+  //   out('PART_OF') узла = предки (куда напр. ребро)  → хлебные крошки
+  //   in('PART_OF') узла  = дети (кто напр. на узел)   → спуск вниз
   async getBySlug(slug, parentRid) {
+    const s = String(slug).replace(/'/g, "\\'")
     if (parentRid) {
       return this.queryOne(
-        `SELECT * FROM Dest WHERE slug = $1 AND $2 IN out('PART_OF')`,
-        [slug, parentRid],
+        `SELECT * FROM Dest WHERE slug = '${s}' AND ${parentRid} IN out('PART_OF')`
       )
     }
-    return this.queryOne('SELECT * FROM Dest WHERE slug = $1', [slug])
+    return this.queryOne(`SELECT * FROM Dest WHERE slug = '${s}'`)
   }
 
-  // --- Список прямых детей (published) ---
+  // --- Список прямых детей узла (у кого ребро PART_OF на rid) ---
+  // ПУБЛИЧНАЯ версия: показываем только опубликованных детей. Родитель на этот
+  // момент уже опубликован (сюда заходят со страницы видимого узла), поэтому
+  // достаточно self-status — а не-опубликованный ребёнок прячет и своё поддерево.
   async listChildren(rid, limit = 50) {
-    const lim = parseInt(limit, 10) || 50
     return this.queryAll(
       `SELECT @rid as rid, slug, title, h1, level, image, priority, status, content FROM Dest
-       WHERE $1 IN out('PART_OF') AND status = 'published'
-       ORDER BY priority DESC LIMIT $2`,
-      [rid, lim],
+       WHERE ${rid} IN out('PART_OF') AND status = 'published'
+       ORDER BY priority DESC LIMIT ${limit}`
     )
   }
 
-  // --- Дети узла без лимита (админ) ---
+  // --- Дети узла БЕЗ лимита (админ drill-down). Сортировка: уровень, затем приоритет ---
   async listChildrenAdmin(rid, limit = 50, offset = 0) {
     const lim = parseInt(limit, 10) || 50
     const off = parseInt(offset, 10) || 0
     return this.queryAll(
       `SELECT @rid as rid, slug, title, h1, level, image, priority, is_hub, status FROM Dest
-       WHERE $1 IN out('PART_OF') ORDER BY priority DESC SKIP $2 LIMIT $3`,
-      [rid, off, lim],
+       WHERE ${rid} IN out('PART_OF') ORDER BY priority DESC SKIP ${off} LIMIT ${lim}`
     )
   }
 
   async countChildrenAdmin(rid) {
     const row = await this.queryOne(
       `SELECT COUNT(*) as c FROM (
-        SELECT FROM Dest WHERE $1 IN out('PART_OF')
-      )`,
-      [rid],
+        SELECT FROM Dest WHERE ${rid} IN out('PART_OF')
+      )`
     )
     return row ? (row.c || 0) : 0
   }
 
-  // --- Дети верхнего уровня (админ-корень) ---
+  // --- Дети верхнего уровня (страны, без родителя) для админ-корня ---
   async listRootAdmin(limit = 50, offset = 0) {
     const lim = parseInt(limit, 10) || 50
     const off = parseInt(offset, 10) || 0
     return this.queryAll(
       `SELECT @rid as rid, slug, title, h1, level, image, priority, is_hub, status FROM Dest
-       WHERE out('PART_OF').size() = 0 ORDER BY priority DESC SKIP $1 LIMIT $2`,
-      [off, lim],
+       WHERE out('PART_OF').size() = 0 ORDER BY priority DESC SKIP ${off} LIMIT ${lim}`
     )
   }
 
   async countRootAdmin() {
     const row = await this.queryOne(
-      `SELECT COUNT(*) as c FROM Dest WHERE out('PART_OF').size() = 0`,
+      `SELECT COUNT(*) as c FROM Dest WHERE out('PART_OF').size() = 0`
     )
     return row ? (row.c || 0) : 0
   }
 
-  // --- Цепочка предков (для хлебных крошек) ---
+  // --- Цепочка предков (для хлебных крошек): от узла к корню ---
+  // ребёнок -PART_OF-> родитель, поэтому предки = out('PART_OF') транзитивно
   async parentsChain(rid) {
     return this.queryAll(
       `SELECT @rid as rid, slug, title, level FROM (
-        TRAVERSE out('PART_OF') FROM $1
-      )`,
-      [rid],
+        TRAVERSE out('PART_OF') FROM ${rid}
+      )`
     )
   }
 
   // --- Узел по полному пути (массив slug от корня) [ПУБЛИЧНЫЙ] ---
+  // Возвращает только узел, вся ветка которого опубликована: корень сам должен
+  // быть published, и каждый следующий хопу — тоже published ребёнок. Поэтому
+  // если где-то в цепочке черновик — спуск обрывается (null).
   async getByPath(slugs) {
     if (!slugs || !slugs.length) return null
+    const esc = (s) => String(s).replace(/'/g, "\\'")
+    const rootSlug = esc(slugs[0])
+    // первый slug — корень (нет родителей: out('PART_OF').size() = 0)
     let current = await this.queryOne(
-      `SELECT * FROM Dest WHERE slug = $1 AND out('PART_OF').size() = 0 AND status = 'published'`,
-      [slugs[0]],
+      `SELECT * FROM Dest WHERE slug = '${rootSlug}' AND out('PART_OF').size() = 0 AND status = 'published'`
     )
     if (!current) return null
+    // спускаемся: каждый следующий slug — опубликованный ребёнок
     for (let i = 1; i < slugs.length; i++) {
       const rid = current['@rid']
       current = await this.queryOne(
-        `SELECT * FROM Dest WHERE slug = $1 AND $2 IN out('PART_OF') AND status = 'published'`,
-        [slugs[i], rid],
+        `SELECT * FROM Dest WHERE slug = '${esc(slugs[i])}' AND ${rid} IN out('PART_OF') AND status = 'published'`
       )
       if (!current) return null
     }
     return current
   }
 
-  // --- Удалить узел ---
+  // --- Удалить узел (и рёбра) ---
   async deleteDest(rid) {
-    return this._deleteVertex(rid)
+    return this.command(`DELETE VERTEX ${rid}`)
   }
 
-  // ============================================================
-  //  ЭТАП 4: Перелинковка и хабы
-  // ============================================================
-
-  /** Топ-места: важные целевые места из всего поддерева */
+  // ============ ЭТАП 4: ПЕРЕЛИНКОВКА И ХАБЫ ============
+  //
+  // «Топ-места»: важные целевые места/достопримечательности из ВСЕГО поддерева
+  // узла (через уровни), чтобы дать прямые прыжки. Напр., хаб региона показывает
+  // Водопад Корбу напрямую, минуя промежуточный хаб Телецкого озера.
+  // Возвращает { places: [{rid,slug,title,level,priority,path:[rids]}], slugMap: {rid:slug} }.
+  // path — цепочка RID от хаба до узла (для сборки полного URL).
+  // ПУБЛИЧНЫЙ: исключаем черновики и всё, что под ними (closed), чтобы не
+  // протащить опубликованный узел, живущий под черновиком.
   async getTopPlaces(rid, { levels = ['attraction', 'place'], limit = 12 } = {}) {
     const lim = parseInt(limit, 10) || 12
-    const levelClause = levels.length
-      ? `(${levels.map((l, i) => `level=$${i + 2}`).join(' OR ')})`
-      : '1=1'
+    const levelClause = levels.length ? `(${levels.map((l) => `level = '${l}'`).join(' OR ')})` : '1=1'
     const closed = await this.getClosedRids()
     const places = await this.queryAll(
       `SELECT @rid as rid, slug, title, h1, level, image, priority, status, content, $path AS path FROM (
-        TRAVERSE in('PART_OF') FROM $1
-      ) WHERE ${levelClause} AND status = 'published' ORDER BY priority DESC LIMIT ${lim}`,
-      [rid, ...levels],
+        TRAVERSE in('PART_OF') FROM ${rid}
+      ) WHERE ${levelClause} AND status = 'published' ORDER BY priority DESC LIMIT ${lim}`
     )
     const publicPlaces = places.filter((p) => !closed.has(String(p.rid)))
+    // карта rid→slug по всему поддереву (для промежуточных звеньев пути)
     const all = await this.queryAll(
-      `SELECT @rid as rid, slug FROM (TRAVERSE in('PART_OF') FROM $1)`,
-      [rid],
+      `SELECT @rid as rid, slug FROM (TRAVERSE in('PART_OF') FROM ${rid})`
     )
     const slugMap = {}
     for (const n of all) {
       const r = String(n.rid)
       slugMap[r] = n.slug
-      const m = r.match(/#\d+:\d+/)
-      if (m) slugMap[m[0]] = n.slug
+      slugMap[r.match(/#\d+:\d+/)?.[0]] = n.slug
     }
     return { places: publicPlaces, slugMap }
   }
 
-  /** Похожие места: братья по дереву */
+  // «Похожие места»: братья по дереву (same parent). Для достопримечательности -
+  // другие достопримечательности того же родителя.
+  // Двухшагово (IN с коллекцией слева не парсится): получить родителя → дети родителя.
+  //
+  // ВАЖНО (ArcadeDB PG Wire): out('PART_OF') возвращает Java-объект-строку.
+  // Используем .@rid — он отдаёт массив RID-строк.
   async getSiblings(rid, limit = 8) {
     const lim = parseInt(limit, 10) || 8
-    const parentRow = await this.queryOne(
-      'SELECT out(\'PART_OF\').@rid AS p FROM $1',
-      [rid],
-    )
+    const parentRow = await this.queryOne(`SELECT out('PART_OF').@rid AS p FROM ${rid}`)
     const parents = (parentRow && parentRow.p) || []
     if (!parents.length) return []
+    // берём родителей (обычно один), для каждого собираем детей
     const parentsList = Array.isArray(parents) ? parents : [parents]
-    const clauses = []
-    const params = [rid, lim]
-    for (const p of parentsList) {
-      clauses.push(`$${params.length + 1} IN out('PART_OF')`)
-      params.push(p)
-    }
-    return this.queryAll(
+    const out = await this.queryAll(
       `SELECT @rid as rid, slug, title, h1, level, image, priority, status, content FROM Dest
-       WHERE (${clauses.join(' OR ')})
-         AND @rid <> $1 AND status = 'published'
-       ORDER BY priority DESC LIMIT $2`,
-      params,
+       WHERE ${parentsList.map((p) => `'${p}' IN out('PART_OF')`).join(' OR ')}
+         AND @rid <> ${rid} AND status = 'published'
+       ORDER BY priority DESC LIMIT ${lim}`
     )
+    return out
   }
 
-  /** Прочитать поле links узла */
+  // Прочитать поле links (ручные блоки перелинковки) узла
   async getLinks(rid) {
-    const r = await this.queryOne('SELECT links FROM $1', [rid])
+    const r = await this.queryOne(`SELECT links FROM ${rid}`)
     return (r && r.links) || null
   }
 
-  /** Sitemap: все узлы дерева с полным путём */
+  // ---- Sitemap: все узлы дерева с полным путём и приоритетом ----
+  // Возвращает [{ slug, title, level, priority, path:[rids] }] для каждого узла.
   async getSitemapTree() {
     const rows = await this.queryAll(
       `SELECT @rid as rid, slug, title, h1, level, priority, is_hub, image, status, $path AS path FROM (
         TRAVERSE in('PART_OF') FROM (SELECT FROM Dest WHERE out('PART_OF').size() = 0)
-      )`,
+      )`
     )
+    // slugMap по всему дереву
     const all = await this.queryAll(
       `SELECT @rid as rid, slug FROM (
         TRAVERSE in('PART_OF') FROM (SELECT FROM Dest WHERE out('PART_OF').size() = 0)
-      )`,
+      )`
     )
     const slugMap = {}
     for (const n of all) {
@@ -466,6 +446,7 @@ class Model extends PDO {
       const m = key.match(/#\d+:\d+/)
       if (m) slugMap[m[0]] = n.slug
     }
+    // собрать полный путь по $path
     return rows.map((r) => ({
       rid: String(r.rid),
       slug: r.slug,
@@ -476,24 +457,26 @@ class Model extends PDO {
       is_hub: r.is_hub,
       image: r.image,
       status: r.status || 'draft',
+      // путь: от корня до узла (включительно), via slugMap
       path: (r.path || []).map((rid) => slugMap[String(rid)]).filter(Boolean).join('/'),
     }))
   }
 
-  /** Глобальный поиск по каталогу */
+  // --- Глобальный поиск по каталогу (slug/title), с полным путём от корня ---
+  // LIKE по slug/title. Возвращает [{rid, slug, title, level, path}].
   async searchDest(q, limit = 50) {
-    const lim = parseInt(limit, 10) || 50
-    const like = `%${q}%`
+    const esc = (s) => String(s).replace(/'/g, "\\'")
+    const like = `%${esc(q).toLowerCase()}%`
     const rows = await this.queryAll(
       `SELECT @rid as rid, slug, title, h1, level, image, is_hub, status, $path AS path FROM (
         TRAVERSE in('PART_OF') FROM (SELECT FROM Dest WHERE out('PART_OF').size() = 0)
-      ) WHERE (slug ILIKE $1 OR title ILIKE $1) ORDER BY title LIMIT $2`,
-      [like, lim],
+      ) WHERE (slug LIKE '${like}' OR title LIKE '${like}') ORDER BY title LIMIT ${limit}`
     )
+    // slugMap по всему дереву — для сборки полного пути
     const all = await this.queryAll(
       `SELECT @rid as rid, slug FROM (
         TRAVERSE in('PART_OF') FROM (SELECT FROM Dest WHERE out('PART_OF').size() = 0)
-      )`,
+      )`
     )
     const slugMap = {}
     for (const n of all) {
@@ -512,19 +495,22 @@ class Model extends PDO {
     }))
   }
 
-  /** Статьи, связанные с местом */
+  // ---- Статьи /stati/ связанные с местом (этап 6) ----
+  // Сначала по рёбрам HAS_ARTICLE (Dest → Article), затем fallback на статьи,
+  // у которых url блога совпадает. Возвращает [{ url, title }].
   async getRelatedArticles(rid, limit = 6) {
     const lim = parseInt(limit, 10) || 6
+    // статьи через ребро HAS_ARTICLE
     const viaEdge = await this.queryAll(
       `SELECT out('HAS_ARTICLE').url AS url, out('HAS_ARTICLE').title AS title
-       FROM $1 WHERE out('HAS_ARTICLE').size() > 0`,
-      [rid],
+       FROM ${rid} WHERE out('HAS_ARTICLE').size() > 0`
     )
     if (viaEdge && viaEdge.length) {
       const urls = viaEdge[0].url
       const titles = viaEdge[0].title
       if (Array.isArray(urls)) {
         return urls.slice(0, lim).map((u, i) => {
+          // title может быть EMBEDDED map {ru: '..'} или строкой
           let t = (Array.isArray(titles) && titles[i]) || 'Читать далее'
           if (t && typeof t === 'object') t = t.ru || t.en || t._ || Object.values(t)[0] || 'Читать далее'
           return { url: `/stati/${String(u).replace(/^\/+/, '')}`, title: String(t) }
@@ -534,12 +520,13 @@ class Model extends PDO {
     return []
   }
 
-  // ============================================================
-  //  ЭТАП 5: точки для карты
-  // ============================================================
-
-  /** Точки для карты узла (сам узел + прямые дети) */
-  async getMapPoints(rid, _pageSlugs = []) {
+  // ---------- ЭТАП 5: точки для карты узла (интеграция с МС maps) ----------
+  // Собирает маркеры для карты на гео-хабе: сам узел (если есть location) +
+  // прямые дочерние узлы с координатами. Возвращает { points, center }.
+  // location хранится как OPoint { coordinates: [lng, lat] } (GeoJSON порядок!).
+  // С DestType: каждая точка содержит typeSlug, typeName, typeIcon для symbol-слоя карты.
+  /** @param {string[]} [pageSlugs] — полный путь страницы для построения ссылок (опционально) */
+  async getMapPoints(rid, pageSlugs = []) {
     const pull = (r) => {
       if (r && r.location) {
         const c = r.location.coordinates
@@ -553,13 +540,11 @@ class Model extends PDO {
     const points = []
     let center = null
 
+    // сам узел (с типом)
     const self = await this.queryOne(
-      `SELECT @rid, slug, title, level, summary, thumbnail, location,
-              out('HAS_TYPE').slug AS typeSlug,
-              out('HAS_TYPE').name AS typeName,
-              out('HAS_TYPE').icon AS typeIcon
-       FROM $1`,
-      [rid],
+      `SELECT @rid, slug, title, level, summary, thumbnail, location, out('HAS_TYPE').slug AS typeSlug,
+              out('HAS_TYPE').name AS typeName, out('HAS_TYPE').icon AS typeIcon
+       FROM ${rid}`
     )
     const selfLoc = pull(self)
     let selfFullSlug = ''
@@ -567,6 +552,7 @@ class Model extends PDO {
       const ts = Array.isArray(self.typeSlug) ? self.typeSlug[0] : self.typeSlug
       const tn = Array.isArray(self.typeName) ? self.typeName[0] : self.typeName
       const ti = Array.isArray(self.typeIcon) ? self.typeIcon[0] : self.typeIcon
+      // Строим путь от корня до этого узла для префикса children
       const chain = await this.parentsChain(rid)
       const pathSlugs = (chain || []).map(c => c.slug).reverse()
       selfFullSlug = pathSlugs.join('/')
@@ -574,36 +560,43 @@ class Model extends PDO {
       center = selfLoc
     }
 
+    // прямые дети с location — только опубликованные, с типом
     const kids = await this.queryAll(
       `SELECT @rid as rid, slug, title, level, summary, thumbnail, location,
-              out('HAS_TYPE').slug AS typeSlug,
-              out('HAS_TYPE').name AS typeName,
+              out('HAS_TYPE').slug AS typeSlug, out('HAS_TYPE').name AS typeName,
               out('HAS_TYPE').icon AS typeIcon
        FROM Dest
-       WHERE $1 IN out('PART_OF') AND location IS NOT NULL AND status = 'published'`,
-      [rid],
+       WHERE ${rid} IN out('PART_OF') AND location IS NOT NULL AND status = 'published'`
     )
+    // Получаем parentsChain для каждого ребёнка — пара доп запросов, но точные ссылки
+    const kidsWithPath = []
     for (const k of kids || []) {
       const loc = pull(k)
       if (loc && k.title) {
         const ts = Array.isArray(k.typeSlug) ? k.typeSlug[0] : k.typeSlug
         const tn = Array.isArray(k.typeName) ? k.typeName[0] : k.typeName
         const ti = Array.isArray(k.typeIcon) ? k.typeIcon[0] : k.typeIcon
+        // полный путь = путь родителя + slug ребёнка
         const fullSlug = (selfFullSlug || '').split('/').filter(Boolean).concat([k.slug]).join('/')
         points.push({ name: k.title, level: k.level, summary: k.summary || '', thumbnail: k.thumbnail || '', slug: k.slug || '', fullSlug, typeSlug: ts || null, typeName: tn || null, typeIcon: ti || null, ...loc })
       }
     }
 
+    // центр: если у узла нет координат — средняя точка по дочерним
     if (!center && points.length) {
       const lat = points.reduce((a, p) => a + p.lat, 0) / points.length
       const lng = points.reduce((a, p) => a + p.lng, 0) / points.length
       center = { lat, lng }
     }
+
     return { points, center }
   }
 
-  /** Все точки региона (TRAVERSE всех потомков) */
-  async getMapPointsDeep(rid, _pageSlugs = []) {
+  // ---------- ЭТАП 5 (deep): все точки региона (не только прямые дети) ----------
+  // TRAVERSE всех PART_OF-потомков рекурсивно (MAXDEPTH 10).
+  // Возвращает { points, center, types } где types — уникальные типы для легенды
+  /** @param {string[]} [pageSlugs] — полный путь страницы для построения ссылок */
+  async getMapPointsDeep(rid, pageSlugs = []) {
     const pull = (r) => {
       if (r && r.location) {
         const c = r.location.coordinates
@@ -617,13 +610,11 @@ class Model extends PDO {
     const points = []
     let center = null
 
+    // сам узел (с типом)
     const self = await this.queryOne(
-      `SELECT @rid, slug, title, level, summary, thumbnail, location,
-              out('HAS_TYPE').slug AS typeSlug,
-              out('HAS_TYPE').name AS typeName,
-              out('HAS_TYPE').icon AS typeIcon
-       FROM $1`,
-      [rid],
+      `SELECT @rid, slug, title, level, summary, thumbnail, location, out('HAS_TYPE').slug AS typeSlug,
+              out('HAS_TYPE').name AS typeName, out('HAS_TYPE').icon AS typeIcon
+       FROM ${rid}`
     )
     const selfLoc = pull(self)
     if (selfLoc && self.title) {
@@ -633,22 +624,21 @@ class Model extends PDO {
       const chain = await this.parentsChain(rid)
       const pathSlugs = (chain || []).map(c => c.slug).reverse()
       const fullSlug = pathSlugs.join('/')
-      points.push({ name: self.title, level: self.level, summary: self.summary || '', thumbnail: self.thumbnail || '', slug: self.slug || '', fullSlug, typeSlug: ts || null, typeName: tn || null, typeIcon: ti || null, ...selfLoc })
+      points.push({ name: self.title, level: self.level, summary: self.summary || '', thumbnail: self.thumbnail || '', slug: self.slug || '', fullSlug: fullSlug, typeSlug: ts || null, typeName: tn || null, typeIcon: ti || null, ...selfLoc })
       center = selfLoc
     }
 
+    // ВСЕ потомки через TRAVERSE in('PART_OF') (ребро ребёнок→родитель, in идёт вниз по дереву), только published
     const descendants = await this.queryAll(
       `SELECT @rid as rid, slug, title, level, summary, thumbnail, location, $path AS path,
-              out('HAS_TYPE').slug AS typeSlug,
-              out('HAS_TYPE').name AS typeName,
+              out('HAS_TYPE').slug AS typeSlug, out('HAS_TYPE').name AS typeName,
               out('HAS_TYPE').icon AS typeIcon
-       FROM (TRAVERSE in('PART_OF') FROM $1 MAXDEPTH 10)
-       WHERE @rid <> $1 AND location IS NOT NULL AND status = 'published'`,
-      [rid],
+       FROM (TRAVERSE in('PART_OF') FROM ${rid} MAXDEPTH 10)
+       WHERE @rid <> ${rid} AND location IS NOT NULL AND status = 'published'`
     )
+    // slugMap по всем узлам в дереве — для сборки полного пути
     const allSlugs = await this.queryAll(
-      `SELECT @rid as rid, slug FROM (TRAVERSE in('PART_OF') FROM $1 MAXDEPTH 10)`,
-      [rid],
+      `SELECT @rid as rid, slug FROM (TRAVERSE in('PART_OF') FROM ${rid} MAXDEPTH 10)`
     )
     const slugMap = {}
     for (const n of allSlugs) {
@@ -660,18 +650,21 @@ class Model extends PDO {
         const ts = Array.isArray(d.typeSlug) ? d.typeSlug[0] : d.typeSlug
         const tn = Array.isArray(d.typeName) ? d.typeName[0] : d.typeName
         const ti = Array.isArray(d.typeIcon) ? d.typeIcon[0] : d.typeIcon
+        // полный путь от корня: $path даёт [корень, промежуточные, этот]
         const pathSlugs = (d.path || []).map(rid => slugMap[String(rid)]).filter(Boolean)
         const fullSlug = pathSlugs.join('/')
-        points.push({ name: d.title, level: d.level, summary: d.summary || '', thumbnail: d.thumbnail || '', slug: d.slug || '', fullSlug, typeSlug: ts || null, typeName: tn || null, typeIcon: ti || null, ...loc })
+        points.push({ name: d.title, level: d.level, summary: d.summary || '', thumbnail: d.thumbnail || '', slug: d.slug || '', fullSlug: fullSlug, typeSlug: ts || null, typeName: tn || null, typeIcon: ti || null, ...loc })
       }
     }
 
+    // центр: если у узла нет координат — средняя по всем точкам
     if (!center && points.length) {
       const lat = points.reduce((a, p) => a + p.lat, 0) / points.length
       const lng = points.reduce((a, p) => a + p.lng, 0) / points.length
       center = { lat, lng }
     }
 
+    // уникальные типы для легенды карты
     const typeSet = new Map()
     for (const p of points) {
       if (p.typeSlug && p.typeName) {
@@ -683,23 +676,21 @@ class Model extends PDO {
     return { points, center, types }
   }
 
-  // ============================================================
-  //  DestType: типы объектов
-  // ============================================================
+  // ============ DestType: типы объектов (13.09.2026) ============
 
+  /** Все типы DestType (каталог) */
   async getTypes() {
     return this.queryAll(
-      `SELECT @rid as rid, slug, slug_plural, name, name_plural, icon, description, priority
-       FROM DestType ORDER BY priority`,
+      `SELECT @rid as rid, slug, slug_plural, name, name_plural, icon, description, priority FROM DestType ORDER BY priority`
     )
   }
 
+  /** Получить тип объекта по RID Dest: { slug, name, name_plural, icon } или null */
   async getDestType(destRid) {
     const row = await this.queryOne(
       `SELECT out('HAS_TYPE').slug AS slug, out('HAS_TYPE').name AS name,
               out('HAS_TYPE').name_plural AS name_plural, out('HAS_TYPE').icon AS icon
-       FROM $1 WHERE out('HAS_TYPE').size() > 0`,
-      [destRid],
+       FROM ${destRid} WHERE out('HAS_TYPE').size() > 0`
     )
     if (!row) return null
     const slug = Array.isArray(row.slug) ? row.slug[0] : row.slug
@@ -709,79 +700,54 @@ class Model extends PDO {
     return slug ? { slug, name, name_plural, icon } : null
   }
 
+  /** Присвоить / сменить / снять тип объекта:
+   *  typeSlug = null/undefined/'' — удалить все HAS_TYPE (снять тип)
+   *  typeSlug = slug — удалить старые, создать новое ребро к DestType
+   */
   async setDestType(destRid, typeSlug) {
-    try {
-      await this.db.command('BEGIN')
-      // удаляем старые HAS_TYPE рёбра
-      const edges = await this.db.queryAll(
-        'SELECT @rid as rid FROM HAS_TYPE WHERE out = $1',
-        [destRid],
-      )
-      for (const e of edges || []) {
-        if (e && e.rid) await this.db.command('DELETE FROM $1', [e.rid])
-      }
-      if (typeSlug) {
-        const type = await this.queryOne(
-          'SELECT @rid FROM DestType WHERE slug = $1',
-          [typeSlug],
-        )
-        if (!type) {
-          await this.db.command('ROLLBACK')
-          return { done: false, error: `DestType '${typeSlug}' not found` }
-        }
-        await this.db.createEdge('HAS_TYPE', destRid, type['@rid'])
-      }
-      await this.db.command('COMMIT')
-      return { done: true }
-    } catch (err) {
-      try { await this.db.command('ROLLBACK') } catch (_) {}
-      console.log('⚡ err::setDestType => ', err)
-      return { err, done: false }
-    }
+    // всегда удаляем старые HAS_TYPE ребра
+    await this.command(`DELETE EDGE HAS_TYPE WHERE out = ${destRid}`)
+    if (!typeSlug) return { done: true } // сняли тип, ребра нет
+    const type = await this.queryOne(
+      `SELECT @rid FROM DestType WHERE slug = '${String(typeSlug).replace(/'/g, "\\'")}'`
+    )
+    if (!type) return { done: false, error: `DestType '${typeSlug}' not found` }
+    await this.create('HAS_TYPE', destRid, type['@rid'])
+    return { done: true }
   }
 
+  /** «Похожие места» по типу: того же типа под тем же родителем (исключая сам узел) */
   async getSimilarByType(destRid, limit = 8) {
     const lim = parseInt(limit, 10) || 8
     const typeRow = await this.queryOne(
-      `SELECT out('HAS_TYPE').@rid AS typeRid FROM $1 WHERE out('HAS_TYPE').size() > 0`,
-      [destRid],
+      `SELECT out('HAS_TYPE').@rid AS typeRid FROM ${destRid} WHERE out('HAS_TYPE').size() > 0`
     )
     if (!typeRow || !typeRow.typeRid) return []
     const typeRid = Array.isArray(typeRow.typeRid) ? typeRow.typeRid[0] : typeRow.typeRid
-    const parentRow = await this.queryOne(
-      `SELECT out('PART_OF').@rid AS p FROM $1`,
-      [destRid],
-    )
+    const parentRow = await this.queryOne(`SELECT out('PART_OF').@rid AS p FROM ${destRid}`)
     const parents = (parentRow && parentRow.p) || []
     if (!parents.length) return []
-    const clauses = []
-    const params = [destRid, lim, typeRid]
-    for (const p of parents) {
-      clauses.push(`$${params.length + 1} IN out('PART_OF')`)
-      params.push(p)
-    }
+    const parentClause = parents.map((p) => `'${p}' IN out('PART_OF')`).join(' OR ')
     return this.queryAll(
       `SELECT @rid as rid, slug, title, h1, level, image, priority, status, content FROM Dest
-       WHERE (${clauses.join(' OR ')}) AND @rid <> $1 AND status = 'published'
-         AND $3 IN out('HAS_TYPE')
-       ORDER BY priority DESC LIMIT $2`,
-      params,
+       WHERE (${parentClause}) AND @rid <> ${destRid} AND status = 'published'
+         AND ${typeRid} IN out('HAS_TYPE')
+       ORDER BY priority DESC LIMIT ${lim}`
     )
   }
 
+  /** Все published объекты заданного типа под родителем (страница категории) */
   async getByParentAndType(parentRid, typeSlug, limit = 50) {
     const lim = parseInt(limit, 10) || 50
     const type = await this.queryOne(
-      'SELECT @rid FROM DestType WHERE slug = $1',
-      [typeSlug],
+      `SELECT @rid FROM DestType WHERE slug = '${String(typeSlug).replace(/'/g, "\\'")}'`
     )
     if (!type) return []
     return this.queryAll(
       `SELECT @rid as rid, slug, title, h1, level, image, priority, description, content FROM Dest
-       WHERE $1 IN out('PART_OF') AND status = 'published'
-         AND $2 IN out('HAS_TYPE')
-       ORDER BY priority DESC LIMIT $3`,
-      [parentRid, type['@rid'], lim],
+       WHERE ${parentRid} IN out('PART_OF') AND status = 'published'
+         AND ${type['@rid']} IN out('HAS_TYPE')
+       ORDER BY priority DESC LIMIT ${lim}`
     )
   }
 }
