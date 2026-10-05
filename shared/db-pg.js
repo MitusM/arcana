@@ -19,12 +19,6 @@ class PgDB {
       database: config.name || config.database,
       max: config.pool?.max || 25,
     })
-    // Ловим error event на пуле — pg-pool выбрасывает его при ошибках
-    // на уровне соединения (не в рамках конкретного query).
-    // Без этого обработчика процесс падает с unhandled error event.
-    this.pool.on('error', (err) => {
-      console.error('⚡ pool error (suppressed):', err.message || err)
-    })
   }
 
   /**
