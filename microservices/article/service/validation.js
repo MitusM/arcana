@@ -1,104 +1,138 @@
 // === === === === === === === === === === === ===
-// validation.js — валидация данных для Section/Subsection/Article
+// validation.js — валидация данных Rubric / Article (МС article)
+//
+// Централизованная валидация с нормализацией slug и белым списком полей
+// (по образцу МС destinations).
 // === === === === === === === === === === === ===
 
-/** Поля Section (строковые, trim) */
-const SECTION_FIELDS = ['url', 'description', 'image']
+export const STATUSES = ['draft', 'published', 'archived']
 
-/** Поля Subsection (строковые, trim) */
-const SUBSECTION_FIELDS = ['url', 'description', 'image']
+const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
-/** Поля Article (строковые, trim) */
-const ARTICLE_FIELDS = ['url', 'description', 'keyword', 'author']
+/** Нормализовать slug: lower, пробелы→дефис, выкинуть мусор. */
+export function normalizeSlug(raw) {
+  if (typeof raw !== 'string') return null
+  let s = raw.trim().toLowerCase()
+  s = s.replace(/\s+/g, '-')
+  s = s.replace(/[^a-z0-9-]/g, '')
+  s = s.replace(/-+/g, '-').replace(/^-|-$/g, '')
+  return s || null
+}
 
-/**
- * Провалидировать данные для Section/Subsection
- * title — EMBEDDED { ru: строку } или строку (конвертится в { ru: ... })
- * sortOrder — integer, по умолчанию 0
- */
-export function validateSectionInput(body) {
-  const errors = []
-  const obj = {}
+/** Проверить формат slug. */
+export function validateSlug(slug) {
+  return typeof slug === 'string' && SLUG_RE.test(slug)
+}
 
-  if (!body || typeof body !== 'object') {
-    return { ok: false, errors: ['Пустое тело запроса'], obj }
-  }
-
-  // title
-  if (body.title === undefined || body.title === '') {
-    errors.push('title: обязательное поле')
-  } else if (typeof body.title === 'string') {
-    obj.title = { ru: body.title.trim() }
-  } else {
-    obj.title = body.title
-  }
-
-  // строковые поля
-  for (const f of SECTION_FIELDS) {
-    if (body[f] !== undefined) obj[f] = String(body[f]).trim()
-  }
-
-  // sortOrder
-  if (body.sortOrder !== undefined) {
-    obj.sortOrder = parseInt(body.sortOrder, 10)
-  }
-
-  return { ok: errors.length === 0, errors, obj }
+/** Привести многоязычное поле к { ru: ... } (строка → map). */
+function toLangMap(val) {
+  if (val === undefined) return undefined
+  if (typeof val === 'string') return { ru: val.trim() }
+  return val
 }
 
 /**
- * Валидация Subsection (те же поля что и у Section)
+ * Валидация рубрики. Возвращает { ok, errors, clean }.
+ * @param {object} body
+ * @param {{requireTitle?:boolean}} opts
  */
-export const validateSubsectionInput = validateSectionInput
-
-/**
- * Провалидировать данные для Article
- * content/tags — EMBEDDED { ru: ... }, можно строку
- */
-export function validateArticleInput(body) {
+export function validateRubricInput(body, { requireTitle = true } = {}) {
   const errors = []
-  const obj = {}
+  const clean = {}
 
   if (!body || typeof body !== 'object') {
-    return { ok: false, errors: ['Пустое тело запроса'], obj }
+    return { ok: false, errors: ['Пустое тело запроса'], clean }
   }
 
-  // title
-  if (body.title === undefined || body.title === '') {
+  // title — обязателен при создании
+  if (body.title !== undefined) {
+    const t = toLangMap(body.title)
+    if (!t || (!t.ru && !Object.keys(t).length)) {
+      if (requireTitle) errors.push('title: обязательное поле')
+    } else {
+      clean.title = t
+    }
+  } else if (requireTitle) {
     errors.push('title: обязательное поле')
-  } else if (typeof body.title === 'string') {
-    obj.title = { ru: body.title.trim() }
-  } else {
-    obj.title = body.title
   }
 
-  // строковые поля
-  for (const f of ARTICLE_FIELDS) {
-    if (body[f] !== undefined) obj[f] = String(body[f]).trim()
+  // url
+  if (body.url !== undefined) {
+    const s = normalizeSlug(body.url)
+    if (s && validateSlug(s)) clean.url = s
+    else if (body.url !== '') errors.push('url: только латиница, цифры и дефис')
   }
 
-  // content → EMBEDDED { ru: ... }
-  if (body.content !== undefined) {
-    obj.content = typeof body.content === 'string'
-      ? { ru: body.content.trim() }
-      : body.content
+  if (body.h1 !== undefined) clean.h1 = String(body.h1).trim()
+  if (body.description !== undefined) clean.description = String(body.description)
+  if (body.image !== undefined) clean.image = String(body.image)
+  if (body.content !== undefined) clean.content = toLangMap(body.content)
+
+  if (body.sortOrder !== undefined) {
+    const n = parseInt(body.sortOrder, 10)
+    clean.sortOrder = Number.isNaN(n) ? 0 : n
   }
 
-  // tags → EMBEDDED { ru: ... }
-  if (body.tags !== undefined) {
-    obj.tags = typeof body.tags === 'string'
-      ? { ru: body.tags }
-      : body.tags
+  if (body.status !== undefined && STATUSES.includes(body.status)) {
+    clean.status = body.status
   }
 
-  // image
-  if (body.image !== undefined) obj.image = String(body.image).trim()
+  return { ok: errors.length === 0, errors, clean }
+}
 
-  // searchable (boolean)
-  if (body.searchable !== undefined) obj.searchable = body.searchable === true || body.searchable === 'true'
+/**
+ * Валидация статьи. Возвращает { ok, errors, clean }.
+ */
+export function validateArticleInput(body, { requireTitle = true } = {}) {
+  const errors = []
+  const clean = {}
 
-  // sortOrder
-  if (body.sortOrder !== undefined) obj.sortOrder = parseInt(body.sortOrder, 10)
+  if (!body || typeof body !== 'object') {
+    return { ok: false, errors: ['Пустое тело запроса'], clean }
+  }
 
-  return { ok: errors.length === 0, errors, obj }
+  if (body.title !== undefined) {
+    const t = toLangMap(body.title)
+    if (!t || (!t.ru && !Object.keys(t).length)) {
+      if (requireTitle) errors.push('title: обязательное поле')
+    } else {
+      clean.title = t
+    }
+  } else if (requireTitle) {
+    errors.push('title: обязательное поле')
+  }
+
+  if (body.url !== undefined) {
+    const s = normalizeSlug(body.url)
+    if (s && validateSlug(s)) clean.url = s
+    else if (body.url !== '') errors.push('url: только латиница, цифры и дефис')
+  }
+
+  if (body.h1 !== undefined) clean.h1 = String(body.h1).trim()
+  if (body.description !== undefined) clean.description = String(body.description)
+  if (body.keyword !== undefined) clean.keyword = String(body.keyword)
+  if (body.author !== undefined) clean.author = String(body.author)
+  if (body.image !== undefined) clean.image = String(body.image)
+  if (body.content !== undefined) clean.content = toLangMap(body.content)
+  if (body.tags !== undefined) clean.tags = toLangMap(body.tags)
+
+  if (body.gallery !== undefined) {
+    clean.gallery = Array.isArray(body.gallery) ? body.gallery.map(String) : []
+  }
+  if (body.seo !== undefined && typeof body.seo === 'object') clean.seo = body.seo
+
+  if (body.searchable !== undefined) {
+    clean.searchable = body.searchable === true || body.searchable === 'true'
+  }
+
+  if (body.sortOrder !== undefined) {
+    const n = parseInt(body.sortOrder, 10)
+    clean.sortOrder = Number.isNaN(n) ? 0 : n
+  }
+
+  if (body.status !== undefined && STATUSES.includes(body.status)) {
+    clean.status = body.status
+  }
+
+  return { ok: errors.length === 0, errors, clean }
 }

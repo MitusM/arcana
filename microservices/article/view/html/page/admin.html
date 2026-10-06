@@ -1,0 +1,170 @@
+{# ============================================================
+   page/admin.html — SPA-админка статей (Article MC)
+   Архитектура (утверждено 06.10.2026):
+     - content-first: постоянный сайдбар дерева рубрик + рабочая область
+     - ДВА отдельных экрана: редактор рубрики и редактор статьи
+     - состояние навигации в hash-URL (#/list, #/rubric/<rid>, #/article/<rid>)
+   Данные из <script id="admin-data"> (adminData от контроллера):
+     { csrf, tree, api, upload }
+   Дерево/списки/формы рендерит JS (assets/js/admin.js → article_admin.js).
+   ============================================================ #}
+
+<div id="artadm" class="artadm">
+  {# ---------- Сайдбар: дерево рубрик + поиск ---------- #}
+  <aside class="artadm-side">
+    <div class="artadm-side-head">
+      <span class="artadm-side-title">Статьи</span>
+      <a class="artadm-link" href="/article/" target="_blank">Сайт ↗</a>
+    </div>
+    <div class="artadm-side-search">
+      <input type="text" id="adm-search" placeholder="Поиск рубрик и статей…" />
+    </div>
+    <nav class="artadm-tree" id="adm-tree" aria-label="Дерево рубрик"></nav>
+    <div class="artadm-side-foot">
+      <button class="adm-btn adm-btn-primary" id="adm-add-root">+ Корневая рубрика</button>
+    </div>
+  </aside>
+
+  {# ---------- Рабочая область ---------- #}
+  <section class="artadm-main">
+    <nav class="artadm-crumbs" id="adm-crumbs" aria-label="breadcrumb"></nav>
+
+    {# Экран 1: список содержимого рубрики (Подрубрики + Статьи) #}
+    <div class="artadm-view" id="view-list">
+      <div class="artadm-view-head">
+        <h1 class="artadm-title" id="list-title">Рубрики</h1>
+        <div class="artadm-head-actions">
+          <button class="adm-btn" id="btn-new-rubric">+ Рубрика</button>
+          <button class="adm-btn adm-btn-primary" id="btn-new-article">+ Статья</button>
+        </div>
+      </div>
+
+      <h2 class="artadm-sec" id="sec-rubrics">Подрубрики</h2>
+      <div class="artadm-section" id="list-rubrics"></div>
+
+      <h2 class="artadm-sec" id="sec-articles">Статьи</h2>
+      <div class="artadm-section" id="list-articles"></div>
+    </div>
+
+    {# Экран 2: редактор рубрики #}
+    <div class="artadm-view" id="view-rubric" style="display:none">
+      <div class="artadm-view-head">
+        <h1 class="artadm-title" id="rubric-title">Новая рубрика</h1>
+        <div class="artadm-head-actions">
+          <span class="adm-pub-label" id="rubric-pub-label"></span>
+          <button class="adm-btn" id="rubric-pub-toggle">Опубликовать</button>
+          <button class="adm-btn adm-btn-primary" id="rubric-save">Создать</button>
+          <button class="adm-btn" id="rubric-cancel">Отмена</button>
+        </div>
+      </div>
+      <input type="hidden" id="r-rid" />
+      <div class="adm-form">
+        <div class="adm-grid2">
+          <label>Название (title)<input id="r-title" /></label>
+          <label>Slug (url)<input id="r-url" /></label>
+        </div>
+        <div class="adm-grid2">
+          <label>H1 (если отличен)<input id="r-h1" /></label>
+          <label>Родитель
+            <select id="r-parent"><option value="">— корень —</option></select>
+          </label>
+        </div>
+        <div class="adm-grid2">
+          <label>Sort order<input id="r-sort" type="number" step="1" placeholder="0" /></label>
+          <label>Обложка (URL)<input id="r-image" placeholder="/images/article/webp/…" /></label>
+        </div>
+        <label>Описание (SEO description)<textarea id="r-description" rows="2"></textarea></label>
+        <label>Контент рубрики
+          <textarea id="r-content" rows="8"></textarea>
+        </label>
+        <label>Загрузка фото
+          <div class="adm-dropzone dropzone" id="rubric-dropzone">
+            <div class="adm-dropzone-hint">Перетащите картинку сюда или кликните</div>
+          </div>
+        </label>
+        <div class="adm-form-actions">
+          <button class="adm-btn adm-btn-primary" id="rubric-save2">Создать</button>
+          <button class="adm-btn" id="rubric-cancel2">Отмена</button>
+        </div>
+      </div>
+    </div>
+
+    {# Экран 3: редактор статьи (полноэкранный, табы) #}
+    <div class="artadm-view" id="view-article" style="display:none">
+      <div class="artadm-view-head">
+        <h1 class="artadm-title" id="article-title">Новая статья</h1>
+        <div class="artadm-head-actions">
+          <span class="adm-pub-label" id="article-pub-label"></span>
+          <button class="adm-btn" id="article-pub-toggle">Опубликовать</button>
+          <button class="adm-btn adm-btn-primary" id="article-save">Создать</button>
+          <button class="adm-btn" id="article-cancel">Отмена</button>
+        </div>
+      </div>
+      <input type="hidden" id="a-rid" />
+      <div class="artadm-tabs" id="article-tabs">
+        <button class="artadm-tab is-active" data-tab="content">Контент</button>
+        <button class="artadm-tab" data-tab="seo">SEO</button>
+        <button class="artadm-tab" data-tab="settings">Настройки</button>
+      </div>
+
+      {# --- Таб: Контент --- #}
+      <div class="artadm-tabpane is-active" data-pane="content">
+        <div class="adm-grid2">
+          <label>Заголовок (title)<input id="a-title" /></label>
+          <label>Slug (url)<input id="a-url" /></label>
+        </div>
+        <label>H1 (если отличен)<input id="a-h1" /></label>
+        <label>Текст статьи
+          <textarea id="a-content" rows="18"></textarea>
+        </label>
+        <label>Загрузка фото
+          <div class="adm-dropzone dropzone" id="article-dropzone">
+            <div class="adm-dropzone-hint">Перетащите картинку сюда или кликните — вставится в текст</div>
+          </div>
+        </label>
+      </div>
+
+      {# --- Таб: SEO --- #}
+      <div class="artadm-tabpane" data-pane="seo" style="display:none">
+        <label>SEO description<textarea id="a-description" rows="3"></textarea></label>
+        <div class="adm-grid2">
+          <label>Keyword<input id="a-keyword" /></label>
+          <label>Автор<input id="a-author" /></label>
+        </div>
+        <div class="adm-grid2">
+          <label>Теги (через запятую)<input id="a-tags" /></label>
+          <label>Обложка (URL)<input id="a-image" placeholder="/images/article/webp/…" /></label>
+        </div>
+      </div>
+
+      {# --- Таб: Настройки --- #}
+      <div class="artadm-tabpane" data-pane="settings" style="display:none">
+        <div class="adm-grid2">
+          <label>Рубрика
+            <select id="a-rubric"><option value="">— выберите —</option></select>
+          </label>
+          <label>Sort order<input id="a-sort" type="number" step="1" placeholder="0" /></label>
+        </div>
+        <div class="adm-grid2">
+          <label class="adm-check"><input type="checkbox" id="a-searchable" checked /> участвует в поиске</label>
+        </div>
+      </div>
+
+      <div class="adm-form-actions">
+        <button class="adm-btn adm-btn-primary" id="article-save2">Создать</button>
+        <button class="adm-btn" id="article-cancel2">Отмена</button>
+      </div>
+    </div>
+
+    {# Экран 4: результаты поиска #}
+    <div class="artadm-view" id="view-search" style="display:none">
+      <div class="artadm-view-head"><h1 class="artadm-title">Поиск</h1></div>
+      <h2 class="artadm-sec">Рубрики</h2>
+      <div class="artadm-section" id="search-rubrics"></div>
+      <h2 class="artadm-sec">Статьи</h2>
+      <div class="artadm-section" id="search-articles"></div>
+    </div>
+  </section>
+</div>
+
+<script type="application/json" id="admin-data">{{ adminData | safe }}</script>

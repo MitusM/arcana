@@ -1,0 +1,59 @@
+{# ============================================================
+   page/rubric.html — страница рубрики (публичная)
+   Данные:
+     title, description, image, h1,
+     breadcrumb: [{name, url, current}],
+     content: HTML рубрики (safe),
+     children:  [{url, cardTitle, image, intro, description}] — подрубрики
+     articles:  [{url, cardTitle, image, intro, description}] — статьи
+   ============================================================ #}
+
+{% if breadcrumb %}
+<nav class="art-breadcrumb" aria-label="breadcrumb">
+  <ol>
+    {% for crumb in breadcrumb %}
+    <li>
+      {% if crumb.current %}
+      <span aria-current="page">{{ crumb.name }}</span>
+      {% else %}
+      <a href="{{ crumb.url }}">{{ crumb.name }}</a>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+</nav>
+{% endif %}
+
+{% if image %}
+<div class="art-hero">
+  <img class="art-hero-bg" src="{{ image }}" alt="{{ h1 }}" loading="eager" fetchpriority="high" />
+  <div class="art-hero-shade"></div>
+  <div class="art-hero-inner">
+    <h1 class="art-h1 art-h1-over">{{ h1 }}</h1>
+    {% if description %}<p class="art-desc art-desc-over">{{ description }}</p>{% endif %}
+  </div>
+</div>
+{% else %}
+<h1 class="art-h1">{{ h1 }}</h1>
+{% if description %}<p class="art-desc">{{ description }}</p>{% endif %}
+{% endif %}
+
+{% if content %}<div class="art-content">{{ content | safe }}</div>{% endif %}
+
+{% if children and children.length %}
+<h2 class="art-h2">Подрубрики</h2>
+<div class="art-grid">
+  {% for item in children %}{% include "./article-card.html" %}{% endfor %}
+</div>
+{% endif %}
+
+{% if articles and articles.length %}
+<h2 class="art-h2">Статьи</h2>
+<div class="art-grid">
+  {% for item in articles %}{% include "./article-card.html" %}{% endfor %}
+</div>
+{% endif %}
+
+{% if (not children or not children.length) and (not articles or not articles.length) %}
+<p class="art-empty">Материалы раздела ещё не опубликованы.</p>
+{% endif %}

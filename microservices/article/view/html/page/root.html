@@ -1,0 +1,27 @@
+{# ============================================================
+   page/root.html — корневой хаб /article/
+   Данные: title, h1, description, rubrics:[{url,title,cardTitle,image,intro,description}]
+   ============================================================ #}
+
+<h1 class="art-h1">{{ h1 | default(title) }}</h1>
+{% if description %}<p class="art-desc">{{ description }}</p>{% endif %}
+
+{% if rubrics and rubrics.length %}
+<h2 class="art-h2">Рубрики</h2>
+<div class="art-grid">
+  {% for c in rubrics %}
+  <a class="art-card" href="{{ c.url }}">
+    {% if c.image %}
+    <div class="ac-media"><img class="ac-img" src="{{ c.image }}" alt="{{ c.cardTitle }}" loading="lazy" /></div>
+    {% endif %}
+    <div class="ac-body">
+      <span class="t">{{ c.cardTitle }}</span>
+      {% if c.description %}<span class="ac-desc">{{ c.description }}</span>
+      {% elif c.intro %}<span class="ac-desc">{{ c.intro }}</span>{% endif %}
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<p class="art-empty">Раздел наполняется.</p>
+{% endif %}

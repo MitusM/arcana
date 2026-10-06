@@ -1,86 +1,91 @@
 -- ============================================================================
 -- schema.sql — схема ArcadeDB для МС article (arcana)
 --
--- Иерархия контента для туристического портала:
---   Section (раздел)
---     └── Subsection (подраздел / подподраздел / ...)
---          └── Article (статья)
+-- Графовая рубрикация статей:
+--   Rubric (рубрика)
+--     ├── HAS_CHILD ──→ Rubric      (подрубрика любого уровня вложенности)
+--     └── HAS_ARTICLE ─→ Article    (статья прямо в рубрике)
 --
 -- ВАЖНО:
 --  1. Код article НЕ создаёт схему автоматически (только DML).
 --     Классы/свойства/индексы заводятся этим скриптом ВРУЧНУЮ.
---  2. Выполнять ОДИН РАЗ на чистой БД (или пустой схеме article/*).
---  3. ArcadeDB поддерживает IF NOT EXISTS — скрипт можно прогонять повторно.
+--  2. Выполнять на БД cloudFRT (ArcadeDB).
 --
--- НЮАНСЫ:
---  * title/content/tags — EMBEDDEDMAP (многоязычные: ru, en, de, fr)
---  * url — уникальный slug для SEO
---  * published — false по умолчанию (черновик)
---  * sortOrder — для ручной сортировки разделов/подразделов
+-- ─── СИНТАКСИС ARCADEDB (не OrientDB!) ──────────────────────────────────────
+--  * Контейнеры: MAP и LIST. Типов EMBEDDEDMAP / EMBEDDEDLIST в ArcadeDB НЕТ —
+--    они падают с 'SQL syntax error ... extraneous input STRING'.
+--  * IF NOT EXISTS поддерживают ТОЛЬКО CREATE VERTEX TYPE / CREATE EDGE TYPE
+--    и CREATE INDEX. У CREATE PROPERTY его НЕТ — повторный прогон вернёт
+--    'Property ... already exists'. Это безопасно: накатывать через раннер,
+--    который трактует 'already exists' как SKIP (см. ниже).
+--  * Свойства можно добавлять и через HTTP API /api/v1/command (PG Wire тоже
+--    умеет CREATE PROPERTY; ALTER TYPE … PROPERTY в ArcadeDB отсутствует).
 --
--- Выполнить через ArcadeDB Studio (http://localhost:2480) или HTTP API:
---   curl -u root:arcade4db -X POST "http://localhost:2480/api/v1/query/cloudFRT/sql" \
+-- Выполнить через ArcadeDB (рабочий порт 2480):
+--   curl -u root:arcade4db -X POST "http://127.0.0.1:2480/api/v1/command/cloudFRT" \
 --     -H "Content-Type: application/json" \
 --     -d '{"command":"<sql>","language":"sql"}'
+--   (одной инструкцией за раз, без завершающей ';')
+--
+-- Идемпотентный раннер (одна инструкция за раз, 'already exists' → SKIP):
+--   python3 /tmp/arcade-schema-run.py microservices/article/schema.sql
+--
+-- НЮАНСЫ ДАННЫХ:
+--  * title/content/tags — MAP (многоязычные: {ru: "...", en: "..."})
+--  * url — slug (внутри рубрики; глобально NOTUNIQUE)
+--  * status — 'draft' (по умолчанию) | 'published' | 'archived'
+--  * sortOrder — ручная сортировка рубрик/статей
+--  * ЛЕГАСИ (унаследовано из импорта cloudFRT, НЕ переопределяем):
+--      Article.description = MAP  (код читает как строку: article.description || '')
+--      Article.created     = DATE (в новых записях используется DATETIME)
 -- ============================================================================
 
 /* ======================== */
 /*  ВЕРШИНЫ                 */
 /* ======================== */
 
-/* ---------- Section: раздел (верхний уровень) ---------- */
-CREATE VERTEX TYPE Section IF NOT EXISTS;
+/* ---------- Rubric: рубрика (любой уровень) ---------- */
+CREATE VERTEX TYPE Rubric IF NOT EXISTS;
+CREATE PROPERTY Rubric.title       MAP;                  -- {ru: "Азия", en: "Asia"}
+CREATE PROPERTY Rubric.h1          STRING;               -- H1 (если отличен от title)
+CREATE PROPERTY Rubric.description STRING;               -- SEO description
+CREATE PROPERTY Rubric.url         STRING;               -- slug
+CREATE PROPERTY Rubric.content     MAP;                  -- {ru: "<html>..."}
+CREATE PROPERTY Rubric.image       STRING;               -- URL обложки
+CREATE PROPERTY Rubric.sortOrder   INTEGER;              -- порядок сортировки
+CREATE PROPERTY Rubric.status      STRING;               -- 'draft' | 'published' | 'archived'
+CREATE PROPERTY Rubric.created     DATETIME;
+CREATE PROPERTY Rubric.updated     DATETIME;
 
-/* ВАЖНО: ArcadeDB через PG Wire НЕ принимает ALTER TYPE … PROPERTY.
-   Используй `CREATE PROPERTY Type.name Type` через HTTP API:
-     POST /api/v1/command/cloudFRT -d '{"command":"...","language":"sql"}'
-*/
-CREATE PROPERTY Section.title       EMBEDDEDMAP STRING;   -- {ru: "Азия", en: "Asia"}
-CREATE PROPERTY Section.description STRING;               -- SEO-описание
-CREATE PROPERTY Section.url         STRING;               -- slug: 'asia'
-CREATE PROPERTY Section.sortOrder   INTEGER;              -- порядок сортировки
-CREATE PROPERTY Section.image       STRING;               -- URL обложки
-CREATE PROPERTY Section.created     DATETIME;
-CREATE PROPERTY Section.updated     DATETIME;
-
-CREATE INDEX IF NOT EXISTS ON Section (url) UNIQUE;
-CREATE INDEX IF NOT EXISTS ON Section (sortOrder) NOTUNIQUE;
-
-/* ---------- Subsection: подраздел (любой уровень вложенности) ---------- */
-CREATE VERTEX TYPE Subsection IF NOT EXISTS;
-
-CREATE PROPERTY Subsection.title       EMBEDDEDMAP STRING;
-CREATE PROPERTY Subsection.description STRING;
-CREATE PROPERTY Subsection.url         STRING;
-CREATE PROPERTY Subsection.sortOrder   INTEGER;
-CREATE PROPERTY Subsection.image       STRING;
-CREATE PROPERTY Subsection.created     DATETIME;
-CREATE PROPERTY Subsection.updated     DATETIME;
-
-CREATE INDEX IF NOT EXISTS ON Subsection (url) NOTUNIQUE;
-CREATE INDEX IF NOT EXISTS ON Subsection (sortOrder) NOTUNIQUE;
+CREATE INDEX IF NOT EXISTS ON Rubric (url) NOTUNIQUE;
+CREATE INDEX IF NOT EXISTS ON Rubric (status) NOTUNIQUE;
+CREATE INDEX IF NOT EXISTS ON Rubric (sortOrder) NOTUNIQUE;
 
 /* ---------- Article: статья ---------- */
+-- Класс Article уже существует (старый код + импорт cloudFRT).
+-- Повторный CREATE PROPERTY вернёт 'already exists' — безопасно (SKIP).
 CREATE VERTEX TYPE Article IF NOT EXISTS;
-
-/* У Article уже часть свойств есть (старый код) — CREATE PROPERTY вернёт
-   ошибку 'already exists', что безопасно. */
-CREATE PROPERTY Article.title       EMBEDDEDMAP STRING;   -- {ru: "Что посмотреть в Азии"}
-CREATE PROPERTY Article.description STRING;               -- SEO description
+CREATE PROPERTY Article.title       MAP;                  -- {ru: "Что посмотреть в Азии"}
+CREATE PROPERTY Article.h1          STRING;               -- H1
+CREATE PROPERTY Article.description STRING;               -- SEO description (легаси: MAP)
 CREATE PROPERTY Article.url         STRING;               -- slug
-CREATE PROPERTY Article.content     EMBEDDEDMAP STRING;   -- {ru: "<html>..."}
-CREATE PROPERTY Article.tags        EMBEDDEDMAP STRING;   -- {ru: "азия,горы"}
-CREATE PROPERTY Article.image       STRING;               — главное изображение
-CREATE PROPERTY Article.keyword     STRING;               — SEO keyword
-CREATE PROPERTY Article.searchable  BOOLEAN DEFAULT true;
-CREATE PROPERTY Article.published   BOOLEAN DEFAULT false; — по умолчанию черновик
-CREATE PROPERTY Article.config      EMBEDDED;             — {commented, likely, views}
-CREATE PROPERTY Article.author      STRING;               — автор статьи
+CREATE PROPERTY Article.content     MAP;                  -- {ru: "<html>..."}
+CREATE PROPERTY Article.tags        MAP;                  -- {ru: "азия,горы"}
+CREATE PROPERTY Article.image       STRING;               -- главное изображение (легаси: MAP)
+CREATE PROPERTY Article.gallery     LIST;                 -- галерея изображений
+CREATE PROPERTY Article.keyword     STRING;               -- SEO keyword
+CREATE PROPERTY Article.seo         EMBEDDED;             -- {title, description, canonical, robots}
+CREATE PROPERTY Article.searchable  BOOLEAN;              -- участвует в поиске
+CREATE PROPERTY Article.published   BOOLEAN;              -- legacy-флаг
+CREATE PROPERTY Article.status      STRING;               -- 'draft' | 'published' | 'archived'
+CREATE PROPERTY Article.config      EMBEDDED;             -- {commented, likely, views}
+CREATE PROPERTY Article.author      STRING;
 CREATE PROPERTY Article.sortOrder   INTEGER;
 CREATE PROPERTY Article.created     DATETIME;
 CREATE PROPERTY Article.updated     DATETIME;
 
 CREATE INDEX IF NOT EXISTS ON Article (url) NOTUNIQUE;
+CREATE INDEX IF NOT EXISTS ON Article (status) NOTUNIQUE;
 CREATE INDEX IF NOT EXISTS ON Article (published) NOTUNIQUE;
 CREATE INDEX IF NOT EXISTS ON Article (sortOrder) NOTUNIQUE;
 
@@ -88,8 +93,10 @@ CREATE INDEX IF NOT EXISTS ON Article (sortOrder) NOTUNIQUE;
 /*  РЁБРА (EDGES)           */
 /* ======================== */
 
-/* ---------- HAS_SUBSECTION: раздел → подраздел (иерархия) ---------- */
-CREATE EDGE TYPE HAS_SUBSECTION IF NOT EXISTS;
+/* ---------- HAS_CHILD: рубрика → подрубрика (иерархия) ----------
+   Направление: ребёнок -HAS_CHILD-> родитель.
+   out('HAS_CHILD') — предки, in('HAS_CHILD') — потомки. */
+CREATE EDGE TYPE HAS_CHILD IF NOT EXISTS;
 
-/* ---------- HAS_ARTICLE: подраздел → статья ---------- */
+/* ---------- HAS_ARTICLE: рубрика → статья ---------- */
 CREATE EDGE TYPE HAS_ARTICLE IF NOT EXISTS;

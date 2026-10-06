@@ -1,0 +1,14 @@
+{# ============================================================
+   page/article-card.html — карточка рубрики/статьи (общая)
+   Ожидает `item` = {url, cardTitle, image, intro, description}
+   ============================================================ #}
+<a class="art-card" href="{{ item.url }}">
+  {% if item.image %}
+  <div class="ac-media"><img class="ac-img" src="{{ item.image }}" alt="{{ item.cardTitle }}" loading="lazy" /></div>
+  {% endif %}
+  <div class="ac-body">
+    <span class="t">{{ item.cardTitle }}</span>
+    {% if item.description %}<span class="ac-desc">{{ item.description }}</span>
+    {% elif item.intro %}<span class="ac-desc">{{ item.intro }}</span>{% endif %}
+  </div>
+</a>

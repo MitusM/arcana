@@ -1,0 +1,47 @@
+{# ============================================================
+   page/article.html — страница статьи (публичная)
+   Данные:
+     title, description, image, h1, author,
+     breadcrumb: [{name, url, current}],
+     content: HTML статьи (safe),
+     related: [{url, cardTitle, image, intro}]
+   ============================================================ #}
+
+{% if breadcrumb %}
+<nav class="art-breadcrumb" aria-label="breadcrumb">
+  <ol>
+    {% for crumb in breadcrumb %}
+    <li>
+      {% if crumb.current %}
+      <span aria-current="page">{{ crumb.name }}</span>
+      {% else %}
+      <a href="{{ crumb.url }}">{{ crumb.name }}</a>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+</nav>
+{% endif %}
+
+<article class="art-article">
+  <h1 class="art-h1">{{ h1 }}</h1>
+  {% if description %}<p class="art-desc">{{ description }}</p>{% endif %}
+  {% if author %}<p class="art-author">{{ author }}</p>{% endif %}
+
+  {% if image %}
+  <figure class="art-cover">
+    <img src="{{ image }}" alt="{{ h1 }}" loading="eager" fetchpriority="high" />
+  </figure>
+  {% endif %}
+
+  {% if content %}<div class="art-content">{{ content | safe }}</div>{% endif %}
+</article>
+
+{% if related and related.length %}
+<div class="art-related">
+  <h2 class="art-h2">Читайте ещё</h2>
+  <div class="art-grid">
+    {% for item in related %}{% include "./article-card.html" %}{% endfor %}
+  </div>
+</div>
+{% endif %}
