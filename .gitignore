@@ -115,3 +115,9 @@ og-cache/
 /core/session
 /core/micromq
 /images/.bak.*
+
+# Загруженные изображения (пишет uploads-МС на диск; в VCS не храним)
+/images/
+
+# Ручные бэкапы файлов перед правками
+*.bak*
