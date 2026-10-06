@@ -11,6 +11,8 @@
 //
 // Эндпоинты:
 //   POST   /upload/:microservice-:mi  → приём multipart, webp-конвейер, JSON путей
+//          mi=ms (напр. article-article) → папка /images/<ms>/
+//          mi≠ms (напр. destinations-dest) → папка /images/<ms>/<mi>/
 //   DELETE /delete-image              → удаление файлов по списку путей (csrf)
 //   RPC    uploads:ping / uploads:health — действия на шине (для других МС)
 //
@@ -47,7 +49,14 @@ const upload = async (req, res, appRootLocal, UPLOAD_DIR_LOCAL) => {
     return { status: 400, message: 'Параметры /:microservice-:mi обязательны' }
   }
 
-  const base = `${UPLOAD_DIR_LOCAL}${ms}/${mi}`
+  // Папка материала. По умолчанию — по имени МС, БЕЗ дублирования, когда mi
+  // совпадает с ms (или пуст/'default'). Так article-article → /images/article/,
+  // а destinations-dest остаётся /images/destinations/dest/ (обратная совместимость).
+  const resolveBase = (m, i) => {
+    if (!i || i === 'default' || i === m) return `${UPLOAD_DIR_LOCAL}${m}`
+    return `${UPLOAD_DIR_LOCAL}${m}/${i}`
+  }
+  const base = resolveBase(ms, mi)
   const originalFolder = `${base}/original/`
   const webpFolder = `${base}/webp/`
   const resizeFolder = `${base}/resize/`
@@ -183,6 +192,7 @@ const upload = async (req, res, appRootLocal, UPLOAD_DIR_LOCAL) => {
 const endpoint = (app) => {
   // Единый приём+конвейер. Структура ответа идентична destinations
   // POST /upload/destinations-dest — клиент (вставка <picture>) не меняется.
+  // Для article клиент шлёт POST /upload/article-article → папка /images/article/.
   app.post('/upload/:microservice-:mi', authGuard, async (req, res) => {
     try {
       const out = await upload(req, res, appRoot, UPLOAD_DIR)
