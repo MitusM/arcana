@@ -741,6 +741,8 @@ import '../scss/admin.scss'
       parallelUploads: 1,
       addRemoveLinks: true,
       withCredentials: true,
+      thumbnailWidth: 240,
+      thumbnailHeight: 240,
       timeout: 300000,
       clickable: '#' + containerId + ' .adm-dropzone-hint',
     })
