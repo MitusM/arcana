@@ -246,7 +246,7 @@ import '../scss/admin.scss'
     c.innerHTML = ''
     var root = document.createElement('a')
     root.className = 'artadm-crumb'
-    root.textContent = 'Статьи'
+    root.textContent = 'Разделы'
     root.href = '#/list'
     c.appendChild(root)
     state.ancestors.forEach(function (a) {
