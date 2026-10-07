@@ -754,31 +754,66 @@ import '../scss/admin.scss'
       if (!body) { msg('error', 'Сервер не вернул данные изображения'); return }
       var scope = file.previewElement
       if (!scope) return
-      // вставка в контент по клику
-      function insert() {
+      // пути файлов для очистки с диска при удалении из дропзоны
+      file.dzMeta = { files: body.files || [] }
+
+      // вставка в контент по клику на миниатюру/детали
+      function insert(ev) {
+        if (ev && ev.target.closest && ev.target.closest('.dz-remove,.dz-cover-btn,.dz-progress')) return
+        if (ev) { ev.preventDefault(); ev.stopPropagation() }
         var ed = editorFor(editorId)
         var html = pictureTag(body.resize, body.webpOriginal)
         if (ed) { ed.focus(); ed.insertContent(html) }
         else if (el(editorId)) el(editorId).value += html
         msg('success', 'Фото вставлено в текст')
       }
-      var img = scope.querySelector('.dz-image')
-      if (img) img.addEventListener('click', function (ev) { ev.stopPropagation(); insert() })
-      // кнопка «сделать обложкой»
+      ;['.dz-image', '.dz-details'].forEach(function (sel) {
+        var node = scope.querySelector(sel)
+        if (node) node.addEventListener('click', insert)
+      })
+      // фолбэк: если превью рендерилось без этих селекторов — клик по всей превью
+      if (!scope.querySelector('.dz-image') && !scope.querySelector('.dz-details')) {
+        scope.addEventListener('click', insert)
+      }
+
+      // кнопка «Сделать обложкой»: подставить ссылку главного webp в поле «Обложка (URL)».
+      // Одна активная на форму.
       var cover = document.createElement('button')
       cover.type = 'button'
       cover.className = 'dz-cover-btn'
+      cover.title = 'Использовать как обложку (поле «Обложка (URL)»)'
       cover.textContent = 'Сделать обложкой'
       var coverPath = body.webpOriginal && body.webpOriginal.pathFile
       cover.addEventListener('click', function (ev) {
+        ev.preventDefault()
         ev.stopPropagation()
         var target = editorId === 'a-content' ? 'a-image' : 'r-image'
-        if (coverPath && el(target)) { el(target).value = coverPath; msg('success', 'Обложка установлена') }
+        if (!coverPath) { msg('error', 'Сервер не вернул ссылку на webp-изображение'); return }
+        if (!el(target)) return
+        el(target).value = coverPath
+        // снять активность с кнопок других превью, отметить текущую
+        var cont = scope && scope.parentNode
+        ;(cont || document).querySelectorAll('.dz-cover-btn').forEach(function (b) {
+          b.classList.remove('is-active')
+        })
+        cover.classList.add('is-active')
+        msg('success', 'Обложка установлена')
       })
       scope.appendChild(cover)
     })
     dz.on('error', function (file, message) {
       msg('error', 'Загрузка: ' + (message && message.message ? message.message : message))
+    })
+    // удаление файлов с диска при удалении из дропзоны (крестик пользователя)
+    dz.on('removedfile', function (file) {
+      var meta = file.dzMeta
+      if (meta && meta.files && meta.files.length) {
+        fetch('/files/delete-image', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ files: meta.files, csrf: CSRF }),
+        }).catch(function () {})
+      }
     })
   }
 

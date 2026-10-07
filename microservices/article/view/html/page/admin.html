@@ -69,18 +69,17 @@
             <select id="r-parent"><option value="">— корень —</option></select>
           </label>
         </div>
-        <div class="adm-grid2">
-          <label>Sort order<input id="r-sort" type="number" step="1" placeholder="0" /></label>
-          <label>Обложка (URL)<input id="r-image" placeholder="/images/article/webp/…" /></label>
-        </div>
+        <label>Sort order<input id="r-sort" type="number" step="1" placeholder="0" /></label>
         <label>Описание (SEO description)<textarea id="r-description" rows="2"></textarea></label>
         <label>Контент рубрики
           <textarea id="r-content" rows="8"></textarea>
         </label>
-        <label>Загрузка фото
+        <label>Обложка (URL)<input id="r-image" placeholder="/images/article/webp/…" /></label>
+        <label>Загрузка фото в материал
           <div class="adm-dropzone dropzone" id="rubric-dropzone">
             <div class="adm-dropzone-hint">Перетащите картинку сюда или кликните</div>
           </div>
+          <div class="adm-dropzone-info">После загрузки клик по миниатюре вставит фото в текст; кнопка «Сделать обложкой» подставит ссылку в поле «Обложка (URL)».</div>
         </label>
         <div class="adm-form-actions">
           <button class="adm-btn adm-btn-primary" id="rubric-save2">Создать</button>
@@ -117,10 +116,12 @@
         <label>Текст статьи
           <textarea id="a-content" rows="18"></textarea>
         </label>
-        <label>Загрузка фото
+        <label>Обложка (URL)<input id="a-image" placeholder="/images/article/webp/…" /></label>
+        <label>Загрузка фото в материал
           <div class="adm-dropzone dropzone" id="article-dropzone">
-            <div class="adm-dropzone-hint">Перетащите картинку сюда или кликните — вставится в текст</div>
+            <div class="adm-dropzone-hint">Перетащите картинку сюда или кликните</div>
           </div>
+          <div class="adm-dropzone-info">После загрузки клик по миниатюре вставит фото в текст; кнопка «Сделать обложкой» подставит ссылку в поле «Обложка (URL)».</div>
         </label>
       </div>
 
@@ -131,10 +132,7 @@
           <label>Keyword<input id="a-keyword" /></label>
           <label>Автор<input id="a-author" /></label>
         </div>
-        <div class="adm-grid2">
-          <label>Теги (через запятую)<input id="a-tags" /></label>
-          <label>Обложка (URL)<input id="a-image" placeholder="/images/article/webp/…" /></label>
-        </div>
+        <label>Теги (через запятую)<input id="a-tags" /></label>
       </div>
 
       {# --- Таб: Настройки --- #}

@@ -424,34 +424,118 @@
   background: #fef3c7;
 }
 
-// ---------- Dropzone ----------
-.adm-dropzone {
-  border: 2px dashed #cbd5e1;
-  border-radius: 10px;
-  padding: 16px;
-  text-align: center;
-  color: #6b7280;
-  font-size: 13px;
-  font-weight: 400;
-  min-height: 80px;
+// ---------- Dropzone (как в destinations) ----------
+// Зона загрузки изображений в материал.
+// dropzone тянется из unpkg (вьюха index.html, только admin_page).
+// Подгоняем под стиль админ-формы.
+.adm-dropzone.dropzone {
+  border: 1.5px dashed #cbd5e1;
+  border-radius: 8px;
+  min-height: 92px;
+  padding: 8px;
+  background: #f8fafc;
+  cursor: pointer;
+  transition: border-color 0.15s;
+  margin-top: 4px;
 }
-
+.adm-dropzone.dropzone:hover,
+.adm-dropzone.dropzone.dz-drag-hover {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
 .adm-dropzone-hint {
+  color: #64748b;
+  font-size: 13px;
+  text-align: center;
+  padding: 26px 8px;
+  margin: 0;
   cursor: pointer;
 }
-
-.dz-cover-btn {
-  margin-top: 6px;
-  padding: 4px 8px;
-  font-size: 11px;
+// Дефолтный dz-message от dropzone («Перетащите изображения или кликните») не нужен:
+// у нас свой hint (.adm-dropzone-hint, а также clickable: hintEl в admin.js).
+// Класс .dropzone на контейнере нужен для плитки превью, но он же включает дефолтный
+// dz-message — прячем его, чтобы не висело две подписи.
+.adm-dropzone.dropzone .dz-message {
+  display: none !important;
+}
+.adm-dropzone.dropzone.dz-started .adm-dropzone-hint {
+  display: none;
+}
+.adm-dropzone.dropzone .dz-preview {
+  // дефолт dropzone (.dropzone .dz-preview) уже даёт display:inline-block = плитку;
+  // здесь только отбивка и точечная поправка поверх дефолта.
+  margin: 8px;
+  position: relative; // якорь для кнопки-крестика удаления (.dz-remove) в углу превью
+}
+.adm-dropzone.dropzone .dz-preview .dz-image {
   border-radius: 6px;
-  border: 1px solid #d1d5db;
-  background: #fff;
-  cursor: pointer;
-
-  &.is-active {
-    background: #111827;
+}
+.adm-dropzone.dropzone .dz-preview .dz-details {
+  display: none;
+}
+// Кнопка удаления файла: дефолтная ссылка dropzone («Remove file» под превью)
+// превращена в иконку-крестик в правом верхнем углу миниатюры.
+.adm-dropzone.dropzone .dz-preview .dz-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  border-radius: 50%;
+  background: rgba(15, 23, 42, 0.55);
+  font-size: 0; // прячем текст («Remove file»)
+  line-height: 1;
+  text-decoration: none !important;
+  // сам крестик рисуем псевдоэлементом
+  &::before {
+    content: '✕';
+    font-size: 13px;
+    font-weight: 700;
     color: #fff;
-    border-color: #111827;
+    line-height: 1;
   }
+}
+.adm-dropzone.dropzone .dz-preview .dz-remove:hover,
+.adm-dropzone.dropzone .dz-preview .dz-remove:focus {
+  background: #dc2626;
+  text-decoration: none;
+  opacity: 1;
+}
+// Кнопка «Сделать обложкой» под превью: вставляет ссылку главного webp в поле «Обложка (URL)».
+// (добавляется в success-обработчике admin.js через scope.appendChild)
+.adm-dropzone.dropzone .dz-preview .dz-cover-btn {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  padding: 4px 6px;
+  font-size: 12px;
+  line-height: 1.2;
+  text-align: center;
+  cursor: pointer;
+  border: 1px solid #cbd5e1;
+  border-radius: 5px;
+  background: #fff;
+  color: #2563eb;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+}
+.adm-dropzone.dropzone .dz-preview .dz-cover-btn:hover {
+  background: #eff6ff;
+  border-color: #2563eb;
+}
+.adm-dropzone.dropzone .dz-preview .dz-cover-btn.is-active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+.adm-dropzone-info {
+  display: block;
+  color: #9ca3af;
+  font-size: 11px;
+  margin-top: 4px;
+  line-height: 1.35;
 }
