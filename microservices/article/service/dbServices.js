@@ -20,6 +20,9 @@ class PDO {
         database: options.database || options.name,
         pool: { max: options.pool?.max || 25 },
       })
+      // Иначе «error» на idle-клиенте уходит в process → UNHANDLED → МС падает,
+      // а gateway висит на запросах к мёртвому МС (см. arcana-article-admin).
+      this.db.pool.on('error', (err) => console.log('⚡ pool error => ', err))
       console.log('🙏🏻 Connected to ArcadeDB')
       return this
     } catch (err) {

@@ -83,14 +83,40 @@ class Model extends PDO {
     return s
   }
 
-  /** Обновить вершину: SET col=$1..$N, + updated=sysdate().
-   *  Игнорирует rid/@rid. Возвращает [setClause, values] или null. */
+  /** Экранировать строку для inline SQL-литерала (обратный слэш + одиночная кавычка). */
+  _esc(s) {
+    return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+  }
+
+  /** Сериализовать значение в inline SQL-литерал ArcadeDB.
+   *  Нужен для MAP/LIST/EMBEDDED-полей: PG Wire НЕ принимает их параметром
+   *  («declared as MAP but an incompatible type is used»), а CAST(... AS MAP)
+   *  в ArcadeDB отсутствует. Скаляры идут параметрами $N, структуры — инлайном. */
+  _lit(v) {
+    if (v === null || v === undefined) return 'null'
+    if (typeof v === 'number') return Number.isFinite(v) ? String(v) : 'null'
+    if (typeof v === 'boolean') return v ? 'true' : 'false'
+    if (Array.isArray(v)) return '[' + v.map((x) => this._lit(x)).join(',') + ']'
+    if (typeof v === 'object') {
+      return '{' + Object.keys(v).map((k) => `'${this._esc(k)}':${this._lit(v[k])}`).join(',') + '}'
+    }
+    return `'${this._esc(String(v))}'`
+  }
+
+  /** Обновить вершину: SET col=$1..$N (скаляры) / col=<литерал> (MAP/LIST/EMBEDDED),
+   *  + updated=sysdate(). Игнорирует rid/@rid. Возвращает [setClause, values] или null. */
   _buildUpdate(data) {
     const keys = Object.keys(data).filter((k) => k !== 'rid' && k !== '@rid')
     if (!keys.length) return null
-    const clauses = keys.map((k, i) => `${k}=$${i + 1}`)
+    const values = []
+    const clauses = keys.map((k) => {
+      const v = data[k]
+      // MAP/LIST/EMBEDDED через PG Wire параметром не принимаются → инлайн-литерал
+      if (v !== null && typeof v === 'object') return `${k}=${this._lit(v)}`
+      values.push(v)
+      return `${k}=$${values.length}`
+    })
     clauses.push('updated=sysdate()')
-    const values = keys.map((k) => data[k])
     return [clauses.join(', '), values]
   }
 
@@ -119,10 +145,17 @@ class Model extends PDO {
   async _createWithEdge(vertexType, edgeType, data, parentRid) {
     const cols = Object.keys(data)
     if (!cols.length) return { done: false, err: new Error('No data to insert') }
-    const sql = `INSERT INTO ${vertexType} SET ${cols
-      .map((k, i) => `${k}=$${i + 1}`)
-      .join(', ')}, created=sysdate(), updated=sysdate()`
-    const values = cols.map((k) => data[k])
+    const values = []
+    const setClause = cols
+      .map((k) => {
+        const v = data[k]
+        // MAP/LIST/EMBEDDED через PG Wire параметром не принимаются → инлайн-литерал
+        if (v !== null && typeof v === 'object') return `${k}=${this._lit(v)}`
+        values.push(v)
+        return `${k}=$${values.length}`
+      })
+      .join(', ')
+    const sql = `INSERT INTO ${vertexType} SET ${setClause}, created=sysdate(), updated=sysdate()`
 
     try {
       await this.db.command('BEGIN')
