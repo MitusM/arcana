@@ -129,7 +129,7 @@ class Model extends PDO {
       await this.db.command(`DELETE FROM HAS_CHILD WHERE in = ${rid}`)
       await this.db.command(`DELETE FROM HAS_ARTICLE WHERE out = ${rid}`)
       await this.db.command(`DELETE FROM HAS_ARTICLE WHERE in = ${rid}`)
-      await this.db.command(`DELETE VERTEX ${rid}`)
+      await this.db.command(`DELETE VERTEX FROM ${rid}`)
       await this.db.command('COMMIT')
       return { done: true }
     } catch (err) {
@@ -360,14 +360,14 @@ class Model extends PDO {
           const ar = this._rid(a.rid)
           await this.db.command(`DELETE FROM HAS_ARTICLE WHERE out = ${ar}`)
           await this.db.command(`DELETE FROM HAS_ARTICLE WHERE in = ${ar}`)
-          await this.db.command(`DELETE VERTEX ${ar}`)
+          await this.db.command(`DELETE VERTEX FROM ${ar}`)
         }
       }
       for (const rr of rubricRids) {
         await this.db.command(`DELETE FROM HAS_CHILD WHERE out = ${rr}`)
         await this.db.command(`DELETE FROM HAS_CHILD WHERE in = ${rr}`)
         await this.db.command(`DELETE FROM HAS_ARTICLE WHERE in = ${rr}`)
-        await this.db.command(`DELETE VERTEX ${rr}`)
+        await this.db.command(`DELETE VERTEX FROM ${rr}`)
       }
       await this.db.command('COMMIT')
       return { done: true }
