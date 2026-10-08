@@ -549,7 +549,7 @@ import '../scss/admin.scss'
       .then(function (o) {
         if (o.status >= 200 && o.status < 300) {
           msg('success', 'Сохранено')
-          if (isNew && o.json.rid) go('#/rubric/' + encodeURIComponent(o.json.rid))
+          if (isNew) go('#/list')
           loadTree()
         } else msg('error', o.json.message || ('HTTP ' + o.status))
       })
