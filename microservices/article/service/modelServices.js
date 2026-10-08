@@ -120,12 +120,15 @@ class Model extends PDO {
     return [clauses.join(', '), values]
   }
 
-  /** Удалить вершину + все её рёбра в транзакции. */
+  /** Удалить вершину + все её рёбра в транзакции.
+   *  ВАЖНО (ArcadeDB PG Wire): DELETE EDGE не парсится — удаляем рёбра как записи. */
   async _deleteVertex(rid) {
     try {
       await this.db.command('BEGIN')
-      await this.db.command(`DELETE EDGE FROM ${rid}`)
-      await this.db.command(`DELETE EDGE TO ${rid}`)
+      await this.db.command(`DELETE FROM HAS_CHILD WHERE out = ${rid}`)
+      await this.db.command(`DELETE FROM HAS_CHILD WHERE in = ${rid}`)
+      await this.db.command(`DELETE FROM HAS_ARTICLE WHERE out = ${rid}`)
+      await this.db.command(`DELETE FROM HAS_ARTICLE WHERE in = ${rid}`)
       await this.db.command(`DELETE VERTEX ${rid}`)
       await this.db.command('COMMIT')
       return { done: true }
@@ -338,7 +341,8 @@ class Model extends PDO {
   async publishRubric(rid) { return this.setRubricStatus(rid, 'published') }
   async unpublishRubric(rid) { return this.setRubricStatus(rid, 'draft') }
 
-  /** Удалить рубрику со всем поддеревом (рубрики + статьи) в транзакции. */
+  /** Удалить рубрику со всем поддеревом (рубрики + статьи) в транзакции.
+   *  ВАЖНО (ArcadeDB PG Wire): DELETE EDGE не парсится — удаляем рёбра как записи. */
   async deleteRubric(rid) {
     const r = this._rid(rid)
     try {
@@ -354,14 +358,15 @@ class Model extends PDO {
         )
         for (const a of articles || []) {
           const ar = this._rid(a.rid)
-          await this.db.command(`DELETE EDGE FROM ${ar}`)
-          await this.db.command(`DELETE EDGE TO ${ar}`)
+          await this.db.command(`DELETE FROM HAS_ARTICLE WHERE out = ${ar}`)
+          await this.db.command(`DELETE FROM HAS_ARTICLE WHERE in = ${ar}`)
           await this.db.command(`DELETE VERTEX ${ar}`)
         }
       }
       for (const rr of rubricRids) {
-        await this.db.command(`DELETE EDGE FROM ${rr}`)
-        await this.db.command(`DELETE EDGE TO ${rr}`)
+        await this.db.command(`DELETE FROM HAS_CHILD WHERE out = ${rr}`)
+        await this.db.command(`DELETE FROM HAS_CHILD WHERE in = ${rr}`)
+        await this.db.command(`DELETE FROM HAS_ARTICLE WHERE in = ${rr}`)
         await this.db.command(`DELETE VERTEX ${rr}`)
       }
       await this.db.command('COMMIT')
