@@ -42,7 +42,10 @@ function decodeRid(input) {
   }
 }
 
-const errorHandler = (res, message, status = 404) => res.status(status).json({ message })
+const errorHandler = (res, message, status = 404) => {
+  const text = message instanceof Error ? message.message : (message || 'Ошибка')
+  return res.status(status).json({ message: text })
+}
 
 /** Достать строку/HTML из многоязычного поля ({ru:...}, {html:...} или строка). */
 function langString(src) {

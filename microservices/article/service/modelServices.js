@@ -294,12 +294,19 @@ class Model extends PDO {
   async createRubric(data, parentRid) {
     if (!parentRid) {
       // корневая рубрика: вершина без входящего ребра
+      // MAP/LIST через PG Wire параметром не принимаются → инлайн-литерал (как _createWithEdge)
       const cols = Object.keys(data)
       if (!cols.length) return { done: false, err: new Error('No data to insert') }
-      const sql = `INSERT INTO Rubric SET ${cols
-        .map((k, i) => `${k}=$${i + 1}`)
-        .join(', ')}, created=sysdate(), updated=sysdate()`
-      const values = cols.map((k) => data[k])
+      const values = []
+      const setClause = cols
+        .map((k) => {
+          const v = data[k]
+          if (v !== null && typeof v === 'object') return `${k}=${this._lit(v)}`
+          values.push(v)
+          return `${k}=$${values.length}`
+        })
+        .join(', ')
+      const sql = `INSERT INTO Rubric SET ${setClause}, created=sysdate(), updated=sysdate()`
       try {
         const res = await this.command(sql, values)
         const newRid = Array.isArray(res) ? (res[0]?.rid || res[0]?.['@rid']) : null
