@@ -5,8 +5,23 @@
 import { PDO } from './dbServices.js'
 import { nanoid } from 'nanoid'
 
-// OrientDB (3.x) DATETIME требует формат 'YYYY-MM-DD HH:mm:ss' (local UTC).
-// ISO-строки вида '2026-08-14T06:28:35.308Z' он не парсит.
+// Экранирование строки для inline-SQL (ArcadeDB PG Wire)
+function sq(v) {
+  if (v == null || v === undefined) return 'null'
+  const s = String(v)
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/\r/g, '\\r')
+    .replace(/\n/g, '\\n')
+    .replace(/\t/g, '\\t')
+  return `'${s}'`
+}
+
+function num(v, def) {
+  const n = parseFloat(v)
+  return Number.isNaN(n) ? String(def != null ? def : 0) : String(n)
+}
+
 function toOrientDate(value) {
   if (!value) return value
   const d = value instanceof Date ? value : new Date(value)
@@ -48,9 +63,9 @@ class Model extends PDO {
     }
   }
 
-  async insert(query, params) {
+  async insert(query, json) {
     try {
-      const res = await this.db.command(query, params)
+      const res = await this.db.command(query, json)
       return { message: res, type: 'insert', done: true }
     } catch (err) {
       console.log('⚡ err::insert => ', err)
@@ -127,40 +142,51 @@ class Model extends PDO {
 
   //  Создать поездку (вершину). Возвращает { rid, _id }
   async createTrip(obj, ownerRid, created) {
-    obj.ownerRid = ownerRid
-    obj._id = obj._id || nanoid(21)
-    obj.is_private = obj.is_private !== undefined ? !!obj.is_private : true
-    obj.status = obj.status || 'open'
-    obj.created_at = toOrientDate(created)
-    obj.updated_at = toOrientDate(created)
+    const _id = obj._id || nanoid(21)
+    const created_at = toOrientDate(created)
+    const updated_at = created_at
     const q =
-      'CREATE VERTEX Trip SET title=:title, description=:description, ' +
-      'start_date=:start_date, end_date=:end_date, currency=:currency, ' +
-      'is_archived=:is_archived, reminder_days=:reminder_days, ' +
-      'is_private=:is_private, status=:status, ' +
-      '_id=:_id, owner=:owner, ownerRid=:ownerRid, created_at=:created_at, updated_at=:updated_at'
-    const res = await this.insert(q, { params: { ...obj } })
-    if (res.done && res.message) {
-      return {
-        rid: String(res.message['@rid']),
-        _id: String(obj._id),
-      }
+      'CREATE VERTEX Trip SET ' +
+      'title=' + sq(obj.title) + ', ' +
+      'description=' + sq(obj.description || '') + ', ' +
+      'start_date=' + sq(obj.start_date) + ', ' +
+      'end_date=' + sq(obj.end_date) + ', ' +
+      'currency=' + sq(obj.currency || 'EUR') + ', ' +
+      'is_archived=' + (obj.is_archived ? 'true' : 'false') + ', ' +
+      'reminder_days=' + num(obj.reminder_days, 3) + ', ' +
+      'is_private=' + (obj.is_private !== undefined ? (obj.is_private ? 'true' : 'false') : 'true') + ', ' +
+      'status=' + sq(obj.status || 'open') + ', ' +
+      '_id=' + sq(_id) + ', ' +
+      'owner=' + sq(obj.owner) + ', ' +
+      'ownerRid=' + sq(ownerRid) + ', ' +
+      'created_at=' + sq(created_at) + ', ' +
+      'updated_at=' + sq(updated_at)
+    const res = await this.command(q)
+    if (res && res.length) {
+      const rid = res[0] && res[0]['@rid'] ? String(res[0]['@rid']) : null
+      return rid ? { rid, _id } : null
     }
     return null
   }
 
   //  Update: безопасно конвертим даты (если переданы) в OrientDB-формат
   updateTrip(rid, fields) {
-    const f = { ...fields }
-    ;['created_at', 'updated_at', 'added_at'].forEach((k) => {
-      if (f[k] !== undefined) f[k] = toOrientDate(f[k])
-    })
-    const set = Object.keys(f)
-      .map((k) => k + '=:' + k)
-      .join(', ')
-    return this.insert(
-      'UPDATE Trip SET ' + set + ' WHERE @rid = ' + rid,
-      { params: { ...f } },
+    const sets = []
+    for (const k of Object.keys(fields)) {
+      const v = fields[k]
+      if (v === undefined) continue
+      const val = ['created_at', 'updated_at', 'added_at'].includes(k)
+        ? sq(toOrientDate(v))
+        : typeof v === 'boolean'
+          ? (v ? 'true' : 'false')
+          : typeof v === 'number'
+            ? num(v)
+            : sq(v)
+      sets.push(k + '=' + val)
+    }
+    if (!sets.length) return { done: true, updated: 0 }
+    return this.command(
+      'UPDATE Trip SET ' + sets.join(', ') + ' WHERE @rid = ' + rid,
     )
   }
 
@@ -174,9 +200,10 @@ class Model extends PDO {
   // === === === === === === === === ===
 
   //  Участники поездки: рёбра с полем user (in)
+  //  ArcadeDB (PG Wire): концы ребра в @out/@in, а НЕ в колонках out/in.
   async getMembers(tripRid) {
     const edges = await this.queryAll(
-      "SELECT out, in, role, is_guest, invited_by, added_at FROM TripMember WHERE out = " +
+      "SELECT @out AS out, @in AS in, role, is_guest, invited_by, added_at FROM TripMember WHERE @out = " +
         tripRid,
     )
     if (!edges) return []
@@ -190,27 +217,24 @@ class Model extends PDO {
     }))
   }
 
-  //  Добавить участника/гостя ребром
+  //  Добавить участника/гостя ребром (inline SQL)
   async addMember(tripRid, userRid, obj) {
-    const params = { ...obj }
-    if (params.added_at !== undefined) params.added_at = toOrientDate(params.added_at)
-    const res = await this.insert(
-      'CREATE EDGE TripMember FROM ' +
-        tripRid +
-        ' TO ' +
-        userRid +
-        ' SET role=:role, is_guest=:is_guest, invited_by=:invited_by, added_at=:added_at',
-      { params },
-    )
-    return res.done ? res.message : null
+    const q =
+      'CREATE EDGE TripMember FROM ' + tripRid + ' TO ' + userRid + ' SET ' +
+      'role=' + sq(obj.role || 'member') + ', ' +
+      'is_guest=' + (obj.is_guest ? 'true' : 'false') + ', ' +
+      'invited_by=' + sq(obj.invited_by || '') + ', ' +
+      'added_at=' + sq(toOrientDate(obj.added_at || new Date().toISOString()))
+    const res = await this.command(q)
+    return res && res.length ? res[0] : null
   }
 
   //  Удалить участника/гостя ребром
   removeMember(tripRid, userRid) {
     return this.command(
-      'DELETE EDGE TripMember WHERE out = ' +
+      'DELETE EDGE TripMember WHERE @out = ' +
         tripRid +
-        ' AND in = ' +
+        ' AND @in = ' +
         userRid,
     )
   }
@@ -218,9 +242,9 @@ class Model extends PDO {
   //  Проверить членство юзера в трипе: рёбра out=trip and in=user
   async isMember(tripRid, userRid) {
     const edges = await this.queryAll(
-      'SELECT FROM TripMember WHERE out = ' +
+      'SELECT FROM TripMember WHERE @out = ' +
         tripRid +
-        ' AND in = ' +
+        ' AND @in = ' +
         userRid,
     )
     return edges && edges.length > 0 ? edges[0] : null
@@ -239,74 +263,56 @@ class Model extends PDO {
   // === === === === === === === === ===
   // Place (вершина) + ребро Trip─Place
   // === === === === === === === === ===
-  // Вершина Place — снапшот места (POI) внутри поездки. Поля копируются из
-  // статьи (путь Б) или из maps-поиска (путь А) в момент добавления, чтобы
-  // метка оставалась осмысленной даже если источник (OSM/статья) изменится.
-  // location: OPoint через ST_GeomFromText("POINT(lon lat)") — единообразно с article.
+  // Вершина Place — снапшот места (POI) внутри поездки.
+  // Все DDL — inline SQL (ArcadeDB PG Wire не переваривает параметризацию
+  // в CREATE VERTEX/EDGE).
 
   //  Создать Place (вершину). Возвращает { rid, _id } или null.
-  //  ВАЖНО: location НЕ храним как spatial OPoint. orientjs (клиентская либа,
-  //  через которую trips ходит в OrientDB) не умеет вставлять ST_GeomFromText —
-  //  падает «Document belongs to abstract class 'OPoint' and cannot be saved»
-  //  (проверено изолированно; REST умеет, orientjs нет). Для снапшота места
-  //  достаточно плоских полей lat/lng (нужны для MapLibre-карты); spatial-
-  //  поиск мест в поездке не нужен (места выбираются по рёбрам Trip─Place).
   async createPlace(obj) {
     const p = { ...obj }
-    p._id = p._id || nanoid(21)
-    p.created_at = toOrientDate(p.created_at || new Date())
+    const _id = p._id || nanoid(21)
+    const created_at = toOrientDate(p.created_at || new Date())
     const q =
       'CREATE VERTEX Place SET ' +
-      'name=:name, description=:description, address=:address, ' +
-      'lat=:lat, lng=:lng, osm_id=:osm_id, google_place_id=:google_place_id, ' +
-      'google_ftid=:google_ftid, source=:source, url=:url, _id=:_id, created_at=:created_at'
-    const res = await this.insert(q, {
-      params: {
-        name: p.name,
-        description: p.description,
-        address: p.address,
-        lat: Number(p.lat),
-        lng: Number(p.lng),
-        osm_id: p.osm_id,
-        google_place_id: p.google_place_id,
-        google_ftid: p.google_ftid,
-        source: p.source,
-        url: p.url,
-        _id: p._id,
-        created_at: p.created_at,
-      },
-    })
-    if (res.done && res.message) {
-      return {
-        rid: String(res.message['@rid']),
-        _id: String(p._id),
-      }
+      'name=' + sq(p.name) + ', ' +
+      'description=' + sq(p.description || '') + ', ' +
+      'address=' + sq(p.address || '') + ', ' +
+      'lat=' + num(p.lat) + ', ' +
+      'lng=' + num(p.lng) + ', ' +
+      'osm_id=' + sq(p.osm_id || null) + ', ' +
+      'google_place_id=' + sq(p.google_place_id || null) + ', ' +
+      'google_ftid=' + sq(p.google_ftid || null) + ', ' +
+      'source=' + sq(p.source || 'article') + ', ' +
+      'url=' + sq(p.url || null) + ', ' +
+      '_id=' + sq(_id) + ', ' +
+      'created_at=' + sq(created_at)
+    const res = await this.command(q)
+    if (res && res.length) {
+      const rid = res[0] && res[0]['@rid'] ? String(res[0]['@rid']) : null
+      return rid ? { rid, _id } : null
     }
     return null
   }
 
-  //  Добавить место в поездку ребром Trip-[TripPlace]->Place
-  //  article_id (стабильный ключ Article.id) и article_rid (#CLUSTER:RID) —
-  //  связка поездки со статьёй-источником (вариант B+C).
+  //  Добавить место в поездку ребром Trip-[TripPlace]->Place (inline SQL)
   async addPlaceToTrip(tripRid, placeRid, obj) {
-    const params = { ...obj }
-    if (params.added_at !== undefined) params.added_at = toOrientDate(params.added_at)
-    const res = await this.insert(
-      'CREATE EDGE TripPlace FROM ' +
-        tripRid +
-        ' TO ' +
-        placeRid +
-        ' SET added_at=:added_at, added_by=:added_by, day=:day, note=:note, ' +
-        'article_id=:article_id, article_rid=:article_rid',
-      { params },
-    )
-    return res.done ? res.message : null
+    const q =
+      'CREATE EDGE TripPlace FROM ' + tripRid + ' TO ' + placeRid + ' SET ' +
+      'added_at=' + sq(toOrientDate(obj.added_at || new Date().toISOString())) + ', ' +
+      'added_by=' + sq(obj.added_by || '') + ', ' +
+      'day=' + sq(obj.day || null) + ', ' +
+      'note=' + sq(obj.note || null) + ', ' +
+      'article_id=' + sq(obj.article_id || null) + ', ' +
+      'article_rid=' + sq(obj.article_rid || null)
+    const res = await this.command(q)
+    return res && res.length ? res[0] : null
   }
 
   //  Места поездки (обход от Trip по ребру TripPlace)
+  //  ArcadeDB (PG Wire): концы ребра в @out/@in, а НЕ в колонках out/in.
   async getTripPlaces(tripRid) {
     const edges = await this.queryAll(
-      'SELECT out, in, added_at, added_by, day, note, article_id, article_rid FROM TripPlace WHERE out = ' +
+      'SELECT @out AS out, @in AS in, added_at, added_by, day, note, article_id, article_rid FROM TripPlace WHERE @out = ' +
         tripRid,
     )
     if (!edges) return []
@@ -340,37 +346,33 @@ class Model extends PDO {
       if (hit && hit.length && hit[0]['@rid']) existing = hit[0]['@rid']
     }
     if (existing) return String(existing)
-    // не найден — создаём канонічний GeoObject (снапшот места)
-    const g = {
-      name: placeObj.name,
-      lat,
-      lng,
-      osm_id: placeObj.osm_id || null,
-      google_place_id: placeObj.google_place_id || null,
-      google_ftid: placeObj.google_ftid || null,
-      url: placeObj.url || null,
-      source: placeObj.source || 'article',
-      created_at: toOrientDate(new Date()),
-    }
-    const created = await this.insert(
+    // не найден — создаём каноничный GeoObject (inline SQL)
+    const created_at = toOrientDate(new Date())
+    const q =
       'CREATE VERTEX GeoObject SET ' +
-        'name=:name, lat=:lat, lng=:lng, osm_id=:osm_id, ' +
-        'google_place_id=:google_place_id, google_ftid=:google_ftid, ' +
-        'url=:url, source=:source, created_at=:created_at',
-      { params: g },
-    )
-    if (created.done && created.message) return String(created.message['@rid'])
+      'name=' + sq(placeObj.name) + ', ' +
+      'lat=' + num(lat) + ', ' +
+      'lng=' + num(lng) + ', ' +
+      'osm_id=' + sq(placeObj.osm_id || null) + ', ' +
+      'google_place_id=' + sq(placeObj.google_place_id || null) + ', ' +
+      'google_ftid=' + sq(placeObj.google_ftid || null) + ', ' +
+      'url=' + sq(placeObj.url || null) + ', ' +
+      'source=' + sq(placeObj.source || 'article') + ', ' +
+      'created_at=' + sq(created_at)
+    const created = await this.command(q)
+    if (created && created.length) {
+      const rid = created[0] && created[0]['@rid'] ? String(created[0]['@rid']) : null
+      return rid
+    }
     return null
   }
 
-  //  Ребро Place-[hasObject]->GeoObject (привязка метки к эталонному объекту)
+  //  Ребро Place-[hasObject]->GeoObject (inline SQL)
   async linkPlaceToGeoObject(placeRid, geoRid) {
     if (!placeRid || !geoRid) return null
-    const res = await this.insert(
-      'CREATE EDGE hasObject FROM ' + placeRid + ' TO ' + geoRid,
-      {},
-    )
-    return res.done ? res.message : null
+    const q = 'CREATE EDGE hasObject FROM ' + placeRid + ' TO ' + geoRid
+    const res = await this.command(q)
+    return res && res.length ? res[0] : null
   }
 
   //  Одно место по RID
@@ -386,7 +388,7 @@ class Model extends PDO {
   //  Убрать место из поездки (удалить ребро; саму вершину Place можно удалить отдельно)
   removePlaceFromTrip(tripRid, placeRid) {
     return this.command(
-      'DELETE EDGE TripPlace WHERE out = ' + tripRid + ' AND in = ' + placeRid,
+      'DELETE EDGE TripPlace WHERE @out = ' + tripRid + ' AND @in = ' + placeRid,
     )
   }
 
@@ -400,9 +402,6 @@ class Model extends PDO {
   // тированный по выбранной метрике и урезанный лимитом.
   //
   // orderBy: 'trips' (default) | 'users' | 'places'
-  // ОДИН SQL: orientjs корректно отдаёт проекции in('hasObject') и двойной
-  // in('hasObject').in('TripPlace') — возвращаются массивами RecordID.
-  // Meta поездок (title/ownerRid) добирается вторым IN-запросом.
   async topGeoObjects(limit = 10, minTrips = 1, orderBy = 'trips') {
     let geos = []
     try {
@@ -416,7 +415,6 @@ class Model extends PDO {
     }
     if (!geos || !geos.length) return []
 
-    // RecordID из проекции — объект (cluster+position), строку даёт String().
     const ridOf = (x) => (x == null ? '' : String(x))
 
     const out = []
@@ -424,7 +422,6 @@ class Model extends PDO {
       const places = Array.isArray(g.places) ? g.places : []
       if (!places.length) continue
 
-      // уникальные поездки (RID), отсортированно — для стабильного IN[]
       const tripSet = new Set()
       for (const t of Array.isArray(g.trips) ? g.trips : []) {
         const r = ridOf(t)
@@ -434,7 +431,6 @@ class Model extends PDO {
       const tripsCount = tripRids.length
       if (tripsCount < minTrips) continue
 
-      // подтянуть meta поездок одним запросом
       let meta = []
       if (tripRids.length) {
         try {
@@ -474,7 +470,6 @@ class Model extends PDO {
       })
     }
 
-    // сортировка по выбранной метрике (ти-брейк: trips desc, затем name)
     const key = orderBy === 'users' ? 'users' : orderBy === 'places' ? 'places' : 'trips'
     out.sort((a, b) => {
       if (b[key] !== a[key]) return b[key] - a[key]

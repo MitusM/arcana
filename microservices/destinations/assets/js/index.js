@@ -5,3 +5,4 @@
 // (зависит от Nunjucks-переменных mapPoints/mapCenter).
 // ============================================================
 import '../scss/index.scss'
+import './trips.js'

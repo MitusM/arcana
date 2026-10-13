@@ -19,6 +19,11 @@ class PgDB {
       database: config.name || config.database,
       max: config.pool?.max || 25,
     })
+    // нероняем процесс при ошибках пула (ArcadeDB PG Wire бывает
+    // нестабилен на DDL — ловим на уровне пула, а не крешим процесс)
+    this.pool.on('error', (err) => {
+      console.error('⚠ pg pool error (non-critical)', err && err.message)
+    })
   }
 
   /**

@@ -259,9 +259,9 @@ const endpoints = async (app) => {
       // первый сегмент = 'destinations', остальное — дерево
       const slugs = fullPath.slice(1)
 
-      // /destinations/admin/* обрабатывается admin-маршрутами (объявлены ниже) —
-      // не пускать сюда как SEO-страницу (иначе 'Not found')
-      if (slugs[0] === 'admin') {
+      // /destinations/admin/* , my-trips, add-to-trip обрабатываются отдельными
+      // эндпоинтами (объявлены ниже) — не пускать сюда как SEO-страницу
+      if (slugs[0] === 'admin' || slugs[0] === 'my-trips' || slugs[0] === 'add-to-trip') {
         return next()
       }
 
@@ -431,6 +431,10 @@ const endpoints = async (app) => {
       // статьи /stati/ по месту (этап 6: машина ссылок блога)
       const related = await db.getRelatedArticles(dest['@rid'], 6)
 
+      // координаты для кнопки «В поездку» (lat/lng из location OPoint)
+      const destLat = dest.location && dest.location.coordinates ? dest.location.coordinates[1] : null
+      const destLng = dest.location && dest.location.coordinates ? dest.location.coordinates[0] : null
+
       // ===== ЭТАП 5: карта на гео-хабе (интеграция с МС maps) =====
       // Берём у maps:map «голую» карту (MapLibre + MapsRender.*) и подставляем
       // точки дерева destinations (узел + дети с координатами).
@@ -487,6 +491,12 @@ const endpoints = async (app) => {
         mapHtml: mapHtml,
         mapPoints: mapPoints,
         mapCenter: mapCenter,
+        // кнопка «В поездку»
+        destLat: destLat,
+        destLng: destLng,
+        destName: dest.title,
+        destSlug: dest.slug,
+        destOsmId: dest.osm_id || null,
         current_year: new Date().getFullYear(),
       }
 
@@ -854,6 +864,62 @@ const endpoints = async (app) => {
     } catch (err) {
       console.log('⚡ err::destinations upload', err)
       return res.status(500).json({ status: 500, message: 'Server error' })
+    }
+  })
+
+  // --------- Прокси для кнопки «В поездку» (RPC → МС trips) ---------
+  // GET /destinations/my-trips — список поездок текущего пользователя
+  app.get('/destinations/my-trips', async (req, res) => {
+    try {
+      const user = req.session && req.session.user
+      if (!user || !user.rid) {
+        return res.status(401).json({ error: 'unauthorized' })
+      }
+      const resp = await res.app.ask('trips', {
+        server: { action: 'trips:list-user', meta: { user: { rid: user.rid } } },
+      })
+      const body = resp && resp.response ? resp.response : resp
+      return res.json(body || { trips: [] })
+    } catch (err) {
+      console.log('⚡ err::destinations my-trips', err)
+      return res.status(500).json({ error: 'internal' })
+    }
+  })
+
+  // POST /destinations/add-to-trip — добавить место в поездку
+  app.post('/destinations/add-to-trip', async (req, res) => {
+    try {
+      const user = req.session && req.session.user
+      if (!user || !user.rid) {
+        return res.status(401).json({ error: 'unauthorized' })
+      }
+      const body = req.body || {}
+      if (!body.tripId || !body.name || body.lat == null || body.lng == null) {
+        return res.status(400).json({ error: 'tripId, name, lat, lng required' })
+      }
+      const resp = await res.app.ask('trips', {
+        server: {
+          action: 'trips:place-add',
+          meta: {
+            user: { rid: user.rid },
+            tripId: body.tripId,
+            place: {
+              name: body.name,
+              lat: body.lat,
+              lng: body.lng,
+              osm_id: body.osmId || null,
+              description: body.description || '',
+              source: 'destinations',
+              url: body.url || null,
+            },
+          },
+        },
+      })
+      const result = resp && resp.response ? resp.response : resp
+      return res.json(result || { error: 'empty response' })
+    } catch (err) {
+      console.log('⚡ err::destinations add-to-trip', err)
+      return res.status(500).json({ error: 'internal' })
     }
   })
 

@@ -66,6 +66,18 @@
 </div>
 {% endif %}
 
+{# ---------- Кнопка «В поездку» ---------- #}
+{% if destLat and destLng %}
+<div class="dest-add-trip">
+  <button class="dest-add-trip-btn" onclick="DestTrips.open(this)" data-name="{{ destName }}" data-lat="{{ destLat }}" data-lng="{{ destLng }}" data-osm-id="{{ destOsmId }}" data-slug="{{ destSlug }}">
+    + В поездку
+  </button>
+  <div class="dest-add-trip-dropdown" style="display:none">
+    <div class="dest-add-trip-loading">Загрузка поездок…</div>
+  </div>
+</div>
+{% endif %}
+
 {# ---------- Контент хаба ---------- #}
 {% if content %}<div class="dest-content">{{ content | safe }}</div>{% endif %}
 
