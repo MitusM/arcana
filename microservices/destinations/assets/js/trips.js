@@ -25,10 +25,12 @@ window.DestTrips = {
     dropdown.style.display = 'block'
 
     // подгрузить поездки если ещё нет
-    if (this._trips && this._trips.length) {
-      this._renderDropdown(dropdown, btn)
-    } else if (this._trips && this._trips.length === 0) {
-      dropdown.innerHTML = '<div class="dest-add-trip-empty">Нет поездок. Создайте сначала.</div>'
+    if (this._trips) {
+      if (this._trips.length) {
+        this._renderDropdown(dropdown, btn)
+      } else {
+        this._renderEmpty(dropdown)
+      }
     } else if (!this._loading) {
       this._loadTrips(dropdown, btn)
     }
@@ -38,17 +40,49 @@ window.DestTrips = {
     dropdown.style.display = 'none'
   },
 
+  // параметры места из кнопки (для отметки «уже в поездке»)
+  _placeOf: function (btn) {
+    return {
+      name: btn.getAttribute('data-name') || '',
+      lat: btn.getAttribute('data-lat') || '',
+      lng: btn.getAttribute('data-lng') || '',
+      osmId: btn.getAttribute('data-osm-id') || '',
+    }
+  },
+
   _loadTrips: function (dropdown, btn) {
     var self = this
     self._loading = true
     dropdown.innerHTML = '<div class="dest-add-trip-loading">Загрузка…</div>'
 
-    fetch('/destinations/my-trips')
-      .then(function (r) { return r.json() })
+    var p = this._placeOf(btn)
+    var qs = []
+    if (p.osmId) qs.push('osmId=' + encodeURIComponent(p.osmId))
+    if (p.name) qs.push('name=' + encodeURIComponent(p.name))
+    if (p.lat !== '') qs.push('lat=' + encodeURIComponent(p.lat))
+    if (p.lng !== '') qs.push('lng=' + encodeURIComponent(p.lng))
+    var url = '/destinations/my-trips' + (qs.length ? '?' + qs.join('&') : '')
+
+    fetch(url)
+      .then(function (r) {
+        // неавторизован — предлагаем войти, а не «ошибка загрузки»
+        if (r.status === 401) {
+          self._loading = false
+          self._trips = null
+          self._renderLogin(dropdown)
+          return null
+        }
+        return r.json()
+      })
       .then(function (data) {
+        if (!data) return
         self._trips = data.trips || []
         self._loading = false
-        self._renderDropdown(dropdown, btn)
+        if (self._trips.length) {
+          self._renderDropdown(dropdown, btn)
+        } else {
+          self._renderEmpty(dropdown)
+        }
       })
       .catch(function (err) {
         self._loading = false
@@ -57,18 +91,38 @@ window.DestTrips = {
       })
   },
 
+  // пустой список поездок — с CTA создать первую
+  _renderEmpty: function (dropdown) {
+    dropdown.innerHTML =
+      '<div class="dest-add-trip-empty">Нет поездок. Создайте сначала.</div>' +
+      '<a class="dest-add-trip-create" href="/trips/">Создать поездку →</a>'
+  },
+
+  // неавторизован — ссылка на вход
+  _renderLogin: function (dropdown) {
+    dropdown.innerHTML =
+      '<div class="dest-add-trip-empty">Войдите, чтобы добавить в поездку.</div>' +
+      '<a class="dest-add-trip-create" href="/auth/login">Войти →</a>'
+  },
+
   _renderDropdown: function (dropdown, btn) {
     var trips = this._trips
     if (!trips || !trips.length) {
-      dropdown.innerHTML = '<div class="dest-add-trip-empty">Нет поездок</div>'
+      this._renderEmpty(dropdown)
       return
     }
 
     var html = ''
     for (var i = 0; i < trips.length; i++) {
       var t = trips[i]
-      html += '<a class="dest-add-trip-option" href="#" data-trip="' + (t._id || t.id || t['@rid']) + '">' +
-        this._escapeHtml(t.title || 'Без названия') + '</a>'
+      var tripId = t._id || t.id || t['@rid']
+      html +=
+        '<a class="dest-add-trip-option' +
+        (t.hasPlace ? ' dest-add-trip-option--has' : '') +
+        '" href="#" data-trip="' + this._escapeHtml(tripId) + '">' +
+        this._escapeHtml(t.title || 'Без названия') +
+        (t.hasPlace ? '<span class="dest-add-trip-has">✓ уже добавлено</span>' : '') +
+        '</a>'
     }
     dropdown.innerHTML = html
 
@@ -109,18 +163,26 @@ window.DestTrips = {
       .then(function (r) { return r.json() })
       .then(function (data) {
         if (data.place) {
-          el.textContent = data.duplicated ? '✓ Уже добавлено' : '✓ Добавлено!'
+          // ссылка на поездку, не закрываем дропдаун сразу
+          var label = data.duplicated ? '✓ Уже добавлено' : '✓ Добавлено!'
+          el.innerHTML =
+            label +
+            ' <a class="dest-add-trip-open" href="/trips/map/' +
+            encodeURIComponent(tripId) +
+            '">Открыть поездку →</a>'
+          el.classList.add('dest-add-trip-option--has')
+        } else if (data.error === 'unauthorized') {
+          el.textContent = 'Войдите, чтобы добавить'
         } else {
           el.textContent = '✗ Ошибка: ' + (data.error || 'неизвестная')
         }
-        setTimeout(function () {
-          // закрыть дропдаун
-          var dd = el.parentNode
-          if (dd) self.close(dd)
-        }, 1500)
+        // если добавили — больше не даём жать повторно в этой же сессии
+        if (data.place) el.style.pointerEvents = 'none'
+        else el.style.pointerEvents = ''
       })
       .catch(function (err) {
         el.textContent = '✗ Ошибка сети'
+        el.style.pointerEvents = ''
         console.error('DestTrips add error:', err)
       })
   },

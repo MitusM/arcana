@@ -466,3 +466,40 @@ h2.dest-h2 {
     border-top: 1px solid #e5e7eb;
   }
 }
+
+// Кнопка «В поездку» — доработки (15.10.2026)
+.dest-add-trip-option--has {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dest-add-trip-has {
+  color: #059669;
+  font-size: .78rem;
+  white-space: nowrap;
+}
+
+.dest-add-trip-create {
+  display: block;
+  padding: 10px 16px;
+  font-size: .9rem;
+  font-weight: 600;
+  color: #2563eb;
+  text-decoration: none;
+  border-top: 1px solid #e5e7eb;
+  &:hover {
+    background: #f3f4f6;
+  }
+}
+
+.dest-add-trip-open {
+  margin-left: 6px;
+  font-weight: 600;
+  color: #2563eb;
+  text-decoration: none;
+  &:hover {
+    text-decoration: underline;
+  }
+}

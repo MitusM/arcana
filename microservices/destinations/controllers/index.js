@@ -886,7 +886,19 @@ const endpoints = async (app) => {
         return res.status(401).json({ error: 'unauthorized' })
       }
       const resp = await res.app.ask('trips', {
-        server: { action: 'trips:list-user', meta: { user: { rid: user.rid } } },
+        server: {
+          action: 'trips:list-user',
+          meta: {
+            user: { rid: user.rid },
+            // чтобы пометить поездки, где это место уже есть
+            place: {
+              osm_id: req.query.osmId || null,
+              name: req.query.name || '',
+              lat: req.query.lat ? Number(req.query.lat) : null,
+              lng: req.query.lng ? Number(req.query.lng) : null,
+            },
+          },
+        },
       })
       const body = resp && resp.response ? resp.response : resp
       return res.json(body || { trips: [] })

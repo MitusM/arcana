@@ -54,6 +54,29 @@ const action = async (app) => {
       for (const t of shared || []) {
         if (!ownedRids.has(String(t['@rid']))) all.push(t)
       }
+
+      //  optional: пометить поездки, где уже есть это место (кнопка «В поездку»
+      //  в destinations знает osm_id/name/lat/lng и хочет показать «✓ уже добавлено»)
+      const place = meta.place || null
+      const hasPlace = !!(place && (place.osm_id || place.name))
+      if (hasPlace) {
+        for (const t of all) {
+          try {
+            const places = await db.getTripPlaces(String(t['@rid']))
+            t.hasPlace = (places || []).some((p) => {
+              if (place.osm_id && p.osm_id) return String(p.osm_id) === String(place.osm_id)
+              return (
+                String(p.name) === String(place.name) &&
+                Number(p.lat) === Number(place.lat) &&
+                Number(p.lng) === Number(place.lng)
+              )
+            })
+          } catch (err) {
+            t.hasPlace = false
+          }
+        }
+      }
+
       res.json({ trips: all })
     } catch (err) {
       console.log('⚡ err::trips:list-user', err)
