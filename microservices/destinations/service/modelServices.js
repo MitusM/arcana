@@ -362,7 +362,8 @@ class Model extends PDO {
 
   // --- Удалить узел (и рёбра) ---
   async deleteDest(rid) {
-    return this.command(`DELETE VERTEX ${rid}`)
+    // ArcadeDB PG Wire: `DELETE VERTEX <rid>` не парсится — нужен FROM.
+    return this.command(`DELETE VERTEX FROM ${rid}`)
   }
 
   // ============ ЭТАП 4: ПЕРЕЛИНКОВКА И ХАБЫ ============
@@ -705,8 +706,15 @@ class Model extends PDO {
    *  typeSlug = slug — удалить старые, создать новое ребро к DestType
    */
   async setDestType(destRid, typeSlug) {
-    // всегда удаляем старые HAS_TYPE ребра
-    await this.command(`DELETE EDGE HAS_TYPE WHERE out = ${destRid}`)
+    // всегда удаляем старые HAS_TYPE ребра.
+    // ВНИМАНИЕ: `DELETE EDGE HAS_TYPE WHERE out = ...` в ArcadeDB PG Wire
+    // не парсится (syntax error) — удаляем двухшагово: SELECT @rid → DELETE FROM <rid>.
+    const oldEdges = await this.queryAll(
+      `SELECT @rid FROM HAS_TYPE WHERE @out = ${destRid}`
+    )
+    for (const e of oldEdges || []) {
+      if (e && e['@rid']) await this.command(`DELETE FROM ${e['@rid']}`)
+    }
     if (!typeSlug) return { done: true } // сняли тип, ребра нет
     const type = await this.queryOne(
       `SELECT @rid FROM DestType WHERE slug = '${String(typeSlug).replace(/'/g, "\\'")}'`
