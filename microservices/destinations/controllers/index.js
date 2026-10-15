@@ -491,12 +491,15 @@ const endpoints = async (app) => {
         mapHtml: mapHtml,
         mapPoints: mapPoints,
         mapCenter: mapCenter,
-        // кнопка «В поездку»
+        // кнопка «В поездку» — только для гео-объектов с типом объекта
+        // (озеро, водопад, гора… — ребро HAS_TYPE → DestType). У хабов-направлений
+        // (страна/регион) типа нет, там кнопку не показываем.
         destLat: destLat,
         destLng: destLng,
         destName: dest.title,
         destSlug: dest.slug,
         destOsmId: dest.osm_id || null,
+        destHasType: !!destType,
         current_year: new Date().getFullYear(),
       }
 

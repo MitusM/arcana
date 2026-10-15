@@ -67,7 +67,9 @@
 {% endif %}
 
 {# ---------- Кнопка «В поездку» ---------- #}
-{% if destLat and destLng %}
+{# Только гео-объекты с типом объекта (озеро, водопад… — HAS_TYPE → DestType).
+   Хабы-направления (страна/регион) типа не имеют → кнопки у них нет. #}
+{% if destLat and destLng and destHasType %}
 <div class="dest-add-trip">
   <button class="dest-add-trip-btn" onclick="DestTrips.open(this)" data-name="{{ destName }}" data-lat="{{ destLat }}" data-lng="{{ destLng }}" data-osm-id="{{ destOsmId }}" data-slug="{{ destSlug }}">
     + В поездку
