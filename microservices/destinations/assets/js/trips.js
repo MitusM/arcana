@@ -112,7 +112,10 @@ window.DestTrips = {
       return
     }
 
-    var html = ''
+    // строка поиска + прокручиваемый список (задача 1: фильтр при многих поездках)
+    var html =
+      '<input class="dest-add-trip-search" type="text" placeholder="Поиск поездки…" />' +
+      '<div class="dest-add-trip-list">'
     for (var i = 0; i < trips.length; i++) {
       var t = trips[i]
       var tripId = t._id || t.id || t['@rid']
@@ -120,10 +123,11 @@ window.DestTrips = {
         '<a class="dest-add-trip-option' +
         (t.hasPlace ? ' dest-add-trip-option--has' : '') +
         '" href="#" data-trip="' + this._escapeHtml(tripId) + '">' +
-        this._escapeHtml(t.title || 'Без названия') +
+        '<span class="dest-add-trip-title">' + this._escapeHtml(t.title || 'Без названия') + '</span>' +
         (t.hasPlace ? '<span class="dest-add-trip-has">✓ уже добавлено</span>' : '') +
         '</a>'
     }
+    html += '</div>'
     dropdown.innerHTML = html
 
     // вешаем обработчики на option
@@ -141,6 +145,37 @@ window.DestTrips = {
           self._addToTrip(opt.getAttribute('data-trip'), name, lat, lng, osmId, opt)
         }
       })(opts[j]))
+    }
+
+    // живой фильтр по названию поездки
+    var search = dropdown.querySelector('.dest-add-trip-search')
+    var list = dropdown.querySelector('.dest-add-trip-list')
+    if (search && list) {
+      search.addEventListener('input', function () {
+        var q = search.value.toLowerCase().trim()
+        var opts = list.querySelectorAll('.dest-add-trip-option')
+        var visible = 0
+        for (var k = 0; k < opts.length; k++) {
+          var titleEl = opts[k].querySelector('.dest-add-trip-title')
+          var title = (titleEl ? titleEl.textContent : opts[k].textContent || '').toLowerCase()
+          var show = !q || title.indexOf(q) !== -1
+          opts[k].style.display = show ? '' : 'none'
+          if (show) visible++
+        }
+        // сообщение «ничего не найдено» — один раз, не плодим
+        var nr = list.querySelector('.dest-add-trip-no-results')
+        if (!visible && opts.length) {
+          if (!nr) {
+            nr = document.createElement('div')
+            nr.className = 'dest-add-trip-no-results'
+            nr.textContent = 'Ничего не найдено'
+            list.appendChild(nr)
+          }
+          nr.style.display = ''
+        } else if (nr) {
+          nr.style.display = 'none'
+        }
+      })
     }
   },
 

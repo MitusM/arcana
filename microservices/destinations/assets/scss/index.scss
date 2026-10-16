@@ -430,12 +430,57 @@ h2.dest-h2 {
   top: 100%;
   left: 0;
   z-index: 100;
-  min-width: 220px;
+  min-width: 240px;
   margin-top: 4px;
   background: #fff;
   border: 1px solid #d1d5db;
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0,0,0,.1);
+}
+
+// Задача 1 (16.10.2026): фильтр + прокрутка при многих поездках
+.dest-add-trip-search {
+  display: block;
+  width: calc(100% - 32px);
+  margin: 8px 12px;
+  padding: 7px 10px;
+  font-size: .88rem;
+  color: #1f2937;
+  background: #f9fafb;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  outline: none;
+  box-sizing: border-box;
+  &:focus {
+    border-color: #2563eb;
+    background: #fff;
+  }
+  &::placeholder {
+    color: #9ca3af;
+  }
+}
+
+.dest-add-trip-list {
+  max-height: 264px;
+  overflow-y: auto;
+  border-top: 1px solid #e5e7eb;
+  overscroll-behavior: contain;
+}
+
+.dest-add-trip-title {
+  display: inline-block;
+  vertical-align: middle;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dest-add-trip-no-results {
+  padding: 12px 16px;
+  color: #9ca3af;
+  font-size: .88rem;
+  text-align: center;
 }
 
 .dest-add-trip-loading,
