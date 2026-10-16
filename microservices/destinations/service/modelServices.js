@@ -686,6 +686,16 @@ class Model extends PDO {
     )
   }
 
+  /** Найти опубликованный Dest по координатам (для харденинга add-to-trip).
+   *  location = OPoint { coordinates: [lng, lat] } (GeoJSON порядок). */
+  async getDestByCoords(lat, lng) {
+    if (lat == null || lng == null) return null
+    const n = (v) => String(Number(v))
+    return this.queryOne(
+      `SELECT @rid, slug, level FROM Dest WHERE status = 'published' AND location.coordinates = [${n(lng)}, ${n(lat)}] LIMIT 1`
+    )
+  }
+
   /** Получить тип объекта по RID Dest: { slug, name, name_plural, icon } или null */
   async getDestType(destRid) {
     const row = await this.queryOne(

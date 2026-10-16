@@ -919,6 +919,17 @@ const endpoints = async (app) => {
       if (!body.tripId || !body.name || body.lat == null || body.lng == null) {
         return res.status(400).json({ error: 'tripId, name, lat, lng required' })
       }
+
+      // харденинг: добавлять можно только гео-объекты destinations с типом объекта
+      // (HAS_TYPE → DestType). UI уже скрывает кнопку у хабов (destHasType), но
+      // прямой POST мимо UI не должен создавать места из хабов-направлений.
+      // Ищем наш Dest по координатам (location = OPoint [lng, lat]); если найден
+      // и типа нет → 400. Если не нашёлся (произвольные коорд.) — пропускаем,
+      // чтобы не ломать легитимные внешние источники.
+      const foundDest = await db.getDestByCoords(Number(body.lat), Number(body.lng))
+      if (foundDest && !(await db.getDestType(foundDest['@rid']))) {
+        return res.status(400).json({ error: 'place_has_no_type' })
+      }
       const resp = await res.app.ask('trips', {
         server: {
           action: 'trips:place-add',
