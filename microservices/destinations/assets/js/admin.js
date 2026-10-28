@@ -5,6 +5,7 @@
 // Дети грузятся лениво через GET /destinations/admin/children.
 // ============================================================
 import '../scss/admin.scss'
+import translitFactory from 'cyrillic-to-translit-js'
 // dropzone — с CDN unpkg как window.Dropzone (index.html).
 // Авто-инициализация и авто-discover отключены ниже в initDropzone.
 
@@ -33,6 +34,21 @@ import '../scss/admin.scss'
 
   // Типы DestType — из adminData.types
   var TYPES = parsed.types || []
+
+  // ---- Slug auto-генерация из H1 через cyrillic-to-translit-js ----
+  var _tr = translitFactory({ preset: 'ru' })
+  var STOP_WORDS = ['a', 'v', 'na', 'i', 'dlya', 's', 'ot', 'po', 'u', 'bez', 'cherez', 'iz', 'pod', 'nad', 'pered']
+  var slugManuallySet = false
+
+  function generateSlug(text) {
+    if (!text) return ''
+    var s = _tr.transform(text, '-').toLowerCase()
+      .replace(/[^a-z0-9-]/g, '')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+    var segs = s.split('-').filter(function (w) { return w.length > 0 && STOP_WORDS.indexOf(w) === -1 })
+    return segs.slice(0, 5).join('-')
+  }
 
   function el(id) {
     return document.getElementById(id)
@@ -478,6 +494,7 @@ import '../scss/admin.scss'
 
   // ---- форма: новый узел в текущем контексте ----
   function newNode() {
+    slugManuallySet = false
     el('adm-form-title').textContent = 'Новый узел'
     el('f-rid').value = ''
     ;['f-title', 'f-slug', 'f-h1', 'f-description', 'f-image', 'f-lat', 'f-lng', 'f-priority'].forEach(
@@ -569,6 +586,7 @@ import '../scss/admin.scss'
         el('adm-form-title').textContent = 'Редактирование: ' + (d.title || d.slug)
         el('f-rid').value = d.rid || ''
         el('f-slug').value = d.slug || ''
+        slugManuallySet = true
         el('f-title').value = d.title || ''
         el('f-h1').value = d.h1 || ''
         el('f-level').value = d.level || 'place'
@@ -581,12 +599,9 @@ import '../scss/admin.scss'
         setContent(d.content && d.content.html ? d.content.html : d.content || '')
         el('f-lat').value = d.lat != null ? d.lat : ''
         el('f-lng').value = d.lng != null ? d.lng : ''
-        // тип объекта
         el('f-type').value = d.type || ''
         el('f-current-rid').value = d.parentRid || ''
         el('f-current-level').value = d.level || ''
-        // родитель: разблокирован для перемещения, заполняется деревом
-        // (исключая сам узел и его потомков — защита от циклов)
         el('f-parent').disabled = false
         el('f-parent').innerHTML = '<option value="">— корень —</option>'
         loadParentOptions(rid, d.parentRid, function (opts) {
@@ -831,6 +846,38 @@ import '../scss/admin.scss'
     var isPub = wrap.getAttribute('data-pub') === '1' || el('adm-pub-label').className.indexOf('adm-pub-on') !== -1
     togglePublish(state.currentEditRid, !isPub)
   }
+  // ---- Slug auto-генерация: фокус на slug → модалка ----
+  el('f-slug').addEventListener('focus', function () {
+    if (slugManuallySet) return
+    var slugField = el('f-slug')
+    if (slugField.value.trim()) return
+    var source = (el('f-h1').value || '').trim() || (el('f-title').value || '').trim()
+    if (!source) return
+    var generated = generateSlug(source)
+    if (!generated) return
+    var srcLabel = (el('f-h1').value || '').trim() ? 'H1' : 'title'
+    el('slug-source-label').textContent = srcLabel
+    el('slug-source-text').textContent = source
+    el('slug-preview').value = generated
+    el('slug-modal').style.display = 'flex'
+  })
+  el('f-slug').addEventListener('input', function () {
+    if (!this.value.trim()) slugManuallySet = false
+  })
+
+  // ---- Модалка slug: кнопки ----
+  el('slug-confirm').onclick = function () {
+    el('f-slug').value = el('slug-preview').value.trim()
+    slugManuallySet = true
+    el('slug-modal').style.display = 'none'
+  }
+  el('slug-cancel').onclick = function () {
+    el('slug-modal').style.display = 'none'
+  }
+  el('slug-modal-close').onclick = function () {
+    el('slug-modal').style.display = 'none'
+  }
+
   el('f-level').onchange = updateLevelHint
 
   // ---- заполнить селект типов из adminData ----

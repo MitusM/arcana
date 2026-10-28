@@ -1,3 +1,6 @@
+import translitFactory from 'cyrillic-to-translit-js'
+const _tr = translitFactory({ preset: 'ru' })
+
 // === === === === === === === === === === === ===
 // validation.js — валидация данных узлов Dest (админ-CRUD)
 //
@@ -35,14 +38,25 @@ export const FIELDS = [
 ]
 
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+const STOP_WORDS = ['a', 'v', 'na', 'i', 'dlya', 's', 'ot', 'po', 'u', 'bez', 'cherez', 'iz', 'pod', 'nad', 'pered']
 
-/** Нормализовать slug: lower, пробелы→дефис, транслит уже сделан на клиенте */
+/**
+ * Нормализовать slug: lower, пробелы→дефис.
+ * Если есть кириллица — транслитерировать (fallback на случай если клиент не сработал).
+ */
 export function normalizeSlug(raw) {
   if (typeof raw !== 'string') return null
   let s = raw.trim().toLowerCase()
+  // Если есть кириллица — транслитерируем
+  if (/[а-яё]/i.test(s)) {
+    s = _tr.transform(s, '-').toLowerCase()
+  }
   s = s.replace(/\s+/g, '-')
   s = s.replace(/[^a-z0-9-]/g, '')
   s = s.replace(/-+/g, '-').replace(/^-|-$/g, '')
+  // выкинуть стоп-слова, ограничить 5 сегментами
+  const segs = s.split('-').filter(w => w.length > 0 && !STOP_WORDS.includes(w))
+  s = segs.slice(0, 5).join('-')
   return s || null
 }
 

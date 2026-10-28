@@ -122,4 +122,24 @@
   </div>
 </div>
 
+{# ========== Модальное окно авто-генерации slug ========== #}
+<div class="adm-modal-overlay" id="slug-modal" style="display:none">
+  <div class="adm-modal">
+    <div class="adm-modal-head">
+      <span>Создание SEO-слага</span>
+      <button type="button" class="adm-modal-close" id="slug-modal-close">&times;</button>
+    </div>
+    <div class="adm-modal-body">
+      <p>Источник: <span id="slug-source-label"></span> — «<span id="slug-source-text"></span>»</p>
+      <label>Слаг (можно отредактировать)
+        <input type="text" id="slug-preview" />
+      </label>
+    </div>
+    <div class="adm-modal-actions">
+      <button class="adm-btn adm-btn-primary" id="slug-confirm">Подтвердить</button>
+      <button class="adm-btn" id="slug-cancel">Отмена</button>
+    </div>
+  </div>
+</div>
+
 <script type="application/json" id="admin-data">{{ adminData | safe }}</script>
