@@ -10,6 +10,9 @@
 //   { csrf, tree, api, upload }
 // ============================================================
 import '../scss/admin.scss'
+import translitFactory from 'cyrillic-to-translit-js'
+
+var _tr = translitFactory({ preset: 'ru' })
 
 ;(function () {
   'use strict'
@@ -53,6 +56,19 @@ import '../scss/admin.scss'
     }
   }
 
+  // ---- Slug auto-генерация (как в destinations) ----
+  var STOP_WORDS = ['a', 'v', 'na', 'i', 'dlya', 's', 'ot', 'po', 'u', 'bez', 'cherez', 'iz', 'pod', 'nad', 'pered']
+  var slugManuallySet = {}  // {rubric:bool, article:bool}
+
+  function generateSlug(text) {
+    if (!text) return ''
+    var s = _tr.transform(text, '-').toLowerCase()
+      .replace(/[^a-z0-9-]/g, '')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+    var segs = s.split('-').filter(function (w) { return w.length > 0 && STOP_WORDS.indexOf(w) === -1 })
+    return segs.slice(0, 5).join('-')
+  }
   // ---- TinyMCE хелперы ----
   var CONTENT_EDITORS = ['r-content', 'a-content']
   function editorFor(id) {
@@ -454,6 +470,7 @@ import '../scss/admin.scss'
   function showRubric(rid, isNew) {
     switchView('view-rubric')
     state.editingRubric = isNew ? null : rid
+    slugManuallySet.rubric = !isNew  // при редактировании — флаг, при создании — сброс
     fillParentSelect('r-parent', rid)
     if (isNew) {
       el('rubric-title').textContent = 'Новая рубрика'
@@ -562,6 +579,7 @@ import '../scss/admin.scss'
   function showArticle(rid, isNew) {
     switchView('view-article')
     state.editingArticle = isNew ? null : rid
+    slugManuallySet.article = !isNew  // при редактировании — флаг, при создании — сброс
     initEditor('a-content')
     if (isNew) {
       el('article-title').textContent = 'Новая статья'
@@ -849,6 +867,61 @@ import '../scss/admin.scss'
   ;['article-cancel', 'article-cancel2'].forEach(function (id) {
     el(id).onclick = function () { go('#/list' + (state.currentNode ? '?rid=' + encodeURIComponent(state.currentNode.rid) : '')) }
   })
+
+  // ---- Slug auto-генерация: фокус на r-url / a-url → модалка (как в destinations) ----
+  var slugActiveField = null // 'r-url' | 'a-url'
+  el('r-url').addEventListener('focus', function () {
+    if (slugManuallySet.rubric) return
+    if (this.value.trim()) return
+    var source = (el('r-title').value || '').trim()
+    if (!source) return
+    var generated = generateSlug(source)
+    if (!generated) return
+    slugActiveField = 'r-url'
+    el('slug-source-label').textContent = 'Название рубрики'
+    el('slug-source-text').textContent = source
+    el('slug-preview').value = generated
+    el('slug-modal').style.display = 'flex'
+  })
+  el('r-url').addEventListener('input', function () {
+    if (!this.value.trim()) slugManuallySet.rubric = false
+  })
+  el('a-url').addEventListener('focus', function () {
+    if (slugManuallySet.article) return
+    if (this.value.trim()) return
+    var source = (el('a-h1').value || '').trim() || (el('a-title').value || '').trim()
+    if (!source) return
+    var generated = generateSlug(source)
+    if (!generated) return
+    slugActiveField = 'a-url'
+    var srcLabel = (el('a-h1').value || '').trim() ? 'H1' : 'title'
+    el('slug-source-label').textContent = srcLabel
+    el('slug-source-text').textContent = source
+    el('slug-preview').value = generated
+    el('slug-modal').style.display = 'flex'
+  })
+  el('a-url').addEventListener('input', function () {
+    if (!this.value.trim()) slugManuallySet.article = false
+  })
+
+  // ---- Модалка slug: кнопки ----
+  el('slug-confirm').onclick = function () {
+    if (slugActiveField && el(slugActiveField)) {
+      el(slugActiveField).value = el('slug-preview').value.trim()
+    }
+    if (slugActiveField === 'r-url') slugManuallySet.rubric = true
+    else if (slugActiveField === 'a-url') slugManuallySet.article = true
+    el('slug-modal').style.display = 'none'
+    slugActiveField = null
+  }
+  el('slug-cancel').onclick = function () {
+    el('slug-modal').style.display = 'none'
+    slugActiveField = null
+  }
+  el('slug-modal-close').onclick = function () {
+    el('slug-modal').style.display = 'none'
+    slugActiveField = null
+  }
 
   // ============================================================
   //  Старт

@@ -539,3 +539,74 @@
   margin-top: 4px;
   line-height: 1.35;
 }
+
+// ---------- Модальное окно (slug, как в destinations) ----------
+.adm-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+}
+.adm-modal {
+  background: #fff;
+  border-radius: 12px;
+  max-width: 520px;
+  width: 90%;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+  overflow: hidden;
+}
+.adm-modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 18px;
+  border-bottom: 1px solid #e5e7eb;
+  font-weight: 700;
+  font-size: 15px;
+}
+.adm-modal-close {
+  border: none;
+  background: none;
+  font-size: 22px;
+  cursor: pointer;
+  color: #9ca3af;
+  line-height: 1;
+  padding: 0;
+  &:hover { color: #111827; }
+}
+.adm-modal-body {
+  padding: 18px;
+  font-size: 14px;
+  color: #374151;
+  p { margin: 0 0 12px; }
+  label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-weight: 600;
+    font-size: 13px;
+    color: #374151;
+  }
+  input {
+    margin-top: 4px;
+    padding: 8px 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 14px;
+    &:focus {
+      border-color: #2563eb;
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+    }
+  }
+}
+.adm-modal-actions {
+  display: flex;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid #e5e7eb;
+  justify-content: flex-end;
+}
