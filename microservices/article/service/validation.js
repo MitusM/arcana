@@ -5,18 +5,28 @@
 // (по образцу МС destinations).
 // === === === === === === === === === === === ===
 
+import translitFactory from 'cyrillic-to-translit-js'
+
+const _tr = translitFactory({ preset: 'ru' })
+
 export const STATUSES = ['draft', 'published', 'archived']
 
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
-/** Нормализовать slug: lower, пробелы→дефис, выкинуть мусор. */
+const STOP_WORDS = ['a', 'v', 'na', 'i', 'dlya', 's', 'ot', 'po', 'u', 'bez', 'cherez', 'iz', 'pod', 'nad', 'pered']
+
+/** Нормализовать slug: транслит, lower, пробелы→дефис, выкинуть мусор, стоп-слова, макс 5 сегментов. */
 export function normalizeSlug(raw) {
   if (typeof raw !== 'string') return null
   let s = raw.trim().toLowerCase()
+  // транслитерация кириллицы
+  if (/[а-яё]/.test(s)) s = _tr.transform(s, '-').toLowerCase()
   s = s.replace(/\s+/g, '-')
   s = s.replace(/[^a-z0-9-]/g, '')
   s = s.replace(/-+/g, '-').replace(/^-|-$/g, '')
-  return s || null
+  // стоп-слова + макс 5 сегментов
+  const segs = s.split('-').filter(w => w.length > 0 && !STOP_WORDS.includes(w))
+  return segs.slice(0, 5).join('-') || null
 }
 
 /** Проверить формат slug. */

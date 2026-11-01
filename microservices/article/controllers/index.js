@@ -14,7 +14,7 @@ import 'dotenv/config' // важно: .env ПЕРВЫМ (до создания C
 import path from 'path'
 import pkg from 'app-root-path'
 import dotenv from 'dotenv'
-import { validateRubricInput, validateArticleInput } from '../service/validation.js'
+import { validateRubricInput, validateArticleInput, normalizeSlug } from '../service/validation.js'
 import { Cache } from '../service/cacheServices.js'
 import { csrfOk } from '../service/csrf.js'
 
@@ -309,6 +309,12 @@ const endpoints = async (app) => {
       if (!csrfOk(body, req)) return res.status(403).json({ status: 403, message: 'Forbidden' })
       const { ok, errors, clean } = validateRubricInput(body, { requireTitle: true })
       if (!ok) return res.status(400).json({ status: 400, message: errors.join('; ') })
+
+      // если slug не передан — генерируем из title
+      if (!clean.url) {
+        const titleStr = langString(clean.title)
+        if (titleStr) clean.url = normalizeSlug(titleStr)
+      }
       if (!clean.url) return res.status(400).json({ status: 400, message: 'url: обязательное поле' })
 
       const parentRid = decodeRid(body.parentRid) || null
@@ -401,6 +407,12 @@ const endpoints = async (app) => {
       if (!csrfOk(body, req)) return res.status(403).json({ status: 403, message: 'Forbidden' })
       const { ok, errors, clean } = validateArticleInput(body, { requireTitle: true })
       if (!ok) return res.status(400).json({ status: 400, message: errors.join('; ') })
+
+      // если slug не передан — генерируем из title
+      if (!clean.url) {
+        const titleStr = langString(clean.title)
+        if (titleStr) clean.url = normalizeSlug(titleStr)
+      }
       if (!clean.url) return res.status(400).json({ status: 400, message: 'url: обязательное поле' })
       const rubricRid = decodeRid(body.rubricRid)
       if (!rubricRid) return res.status(400).json({ status: 400, message: 'rubricRid обязателен' })
