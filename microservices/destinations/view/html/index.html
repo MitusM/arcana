@@ -25,9 +25,7 @@
     {% endif %}
   </head>
   <body>
-    <nav class="dest-nav" role="navigation">
-      <div class="wrap"><a href="/destinations/">Куда поехать</a></div>
-    </nav>
+    {% include "header.html" %}
 
     <main class="dest-main{% if admin_page %} dest-main-admin{% endif %}" role="main">
       {% include page %}

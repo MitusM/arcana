@@ -1,0 +1,40 @@
+{# ============================================================
+   header.html — единый хедер для публичных страниц arcana
+   Используется через {% include "header.html" %}
+   (require: path к assets/view/ в FileSystemLoader render MC)
+
+   Данные (из data, пробрасывается через контроллер):
+     breadcrumb: [{name, url, current}]  —  от корня к текущей странице
+   ============================================================ #}
+
+<div class="top-bar">
+  {# ---- Логотип 176×176 (beige фон + SVG) ---- #}
+  <div class="logo-block">
+    <img src="/public/images/logo.svg" alt="Frt" width="176" height="176" />
+  </div>
+
+  {# ---- Нав + хлебные крошки (правая колонка) ---- #}
+  <div class="nav-area">
+    <nav class="navbar" role="navigation">
+      <span class="brand">Navbar</span>
+      <a href="/" class="active">Главная</a>
+      <a href="/destinations/">Направления</a>
+    </nav>
+
+    {% if breadcrumb and breadcrumb.length %}
+    <nav class="dest-breadcrumb" aria-label="breadcrumb">
+      <ol>
+        {% for crumb in breadcrumb %}
+        <li>
+          {% if crumb.current %}
+          <span aria-current="page">{{ crumb.name }}</span>
+          {% else %}
+          <a href="{{ crumb.url }}">{{ crumb.name }}</a>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ol>
+    </nav>
+    {% endif %}
+  </div>
+</div>

@@ -25,24 +25,8 @@
 </a>
 {% endmacro %}
 
-{# ---------- Хлебные крошки ---------- #}
-{% if breadcrumb %}
-<nav class="dest-breadcrumb" aria-label="breadcrumb">
-  <ol>
-    {% for crumb in breadcrumb %}
-    <li>
-      {% if crumb.current %}
-      <span aria-current="page">{{ crumb.name }}</span>
-      {% else %}
-      <a href="{{ crumb.url }}">{{ crumb.name }}</a>
-      {% endif %}
-    </li>
-    {% endfor %}
-  </ol>
-</nav>
-{% endif %}
-
-{# ---------- Hero: основное изображение на всю ширину + H1 поверх ---------- #}
+{# ---------- Карточка места/хаба (как на /destinations/) ----------
+   Поля: url, image, level, cardTitle (H1 если отличен от title, иначе title), intro #}
 {% if image %}
 <div class="dest-hero">
   <img class="dest-hero-bg" src="{{ image }}" alt="{{ h1 }}" loading="eager" fetchpriority="high" />

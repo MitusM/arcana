@@ -1,0 +1,139 @@
+// === === === === === === === === === === === ===
+// top-bar — единая шапка для публичных страниц
+// Лого 176×176 слева, navbar + breadcrumb справа
+// === === === === === === === === === === === ===
+
+@use '_mixin';
+
+// === === === === === === === === === === === ===
+// 1. Top-bar — flex-сплит
+// === === === === === === === === === === === ===
+.top-bar {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  // Фиксация шапки (лого + navbar + breadcrumb) вверху при прокрутке (14.11.2026)
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+}
+
+// === Единый публичный фронтенд: шапка поверх контента ===
+// Правки единого фронтенда (sticky + наезд лого) живут ЗДЕСЬ, в assets/,
+// а не в специфичных scss микросервисов (14.11.2026).
+// Селектор через :has() — применяется только там, где top-bar прямой ребёнок
+// body и main идёт сразу за ним (destinations и новые МС единого фронтенда).
+// Старые .page-раскладки (users/maps/trips/cache: top-bar внутри .page-header)
+// и МС без top-bar (article) не затрагиваются.
+
+// _reset.scss задаёт html,body{height:100%} — body жёстко во вьюпорт,
+// из-за этого sticky "отпускался" после первого экрана.
+// На страницах единого фронтенда растягиваем body по контенту.
+body:has(> .top-bar) {
+  height: auto;
+  min-height: 100%;
+}
+
+// Лого-блок (176px) частично наезжает на main сверху: main поднят на 80px
+body:has(> .top-bar) > main {
+  margin-top: -80px;
+}
+
+// === === === === === === === === === === === ===
+// 2. Лого-блок (176×176, beige фон, SVG-лого)
+// === === === === === === === === === === === ===
+.logo-block {
+  width: 176px;
+  min-width: 176px;
+  height: 176px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f0f0dc;
+  flex-shrink: 0;
+
+  svg,
+  img {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+}
+
+// === === === === === === === === === === === ===
+// 3. Nav-area — правая часть (stacks navbar + breadcrumb)
+// === === === === === === === === === === === ===
+.nav-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+// === === === === === === === === === === === ===
+// 4. Navbar — тёмная панель навигации
+// === === === === === === === === === === === ===
+.navbar {
+  background: #343A40;
+  min-height: 5.67rem;
+  display: flex;
+  align-items: center;
+  padding: 0 2rem;
+
+  .brand {
+    color: #ffffff;
+    font-weight: 600;
+    font-size: 1rem;
+    letter-spacing: 0.02em;
+    margin-right: 1.75rem;
+  }
+
+  a {
+    color: #9A9DA0;
+    font-size: 0.875rem;
+    transition: color 0.2s;
+    text-decoration: none;
+    margin-right: 1.75rem;
+
+    &:hover,
+    &.active {
+      color: #FFFECD;
+    }
+  }
+}
+
+// === === === === === === === === === === === ===
+// 5. Breadcrumb — под navbar, в правой колонке (из .dest-breadcrumb)
+// === === === === === === === === === === === ===
+.dest-breadcrumb {
+  font-size: 14px;
+  color: #6b7280;
+  ol {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  li::after {
+    content: '›';
+    margin: 0 6px;
+    color: #9ca3af;
+  }
+  li:last-child::after {
+    content: '';
+  }
+  a {
+    color: #6b7280;
+    text-decoration: none;
+    &:hover {
+      color: #1f2937;
+      text-decoration: underline;
+    }
+  }
+  [aria-current] {
+    color: #1f2937;
+    font-weight: 600;
+  }
+}

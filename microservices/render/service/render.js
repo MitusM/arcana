@@ -1,3 +1,4 @@
+const path = require('path')
 const nunjucks = require('nunjucks')
 const dateFilter = require('./filter/date')
 const byteTogb = require('./filter/bt_to_gb')
@@ -9,9 +10,11 @@ module.exports = class Render {
    * @param {*} dir -
    */
   constructor(app, dir) {
-    this.dir = dir
+    this.dir = dir;
+    const appRoot = (dir || '').match(/^(.+?)\/microservices\//)?.[1] || process.env.APP_ROOT || dir;
+    const sharedDirs = [dir, path.join(appRoot, 'assets/view/')].filter(Boolean)
     this.env = new nunjucks.Environment(
-      new nunjucks.FileSystemLoader(this.dir),
+      new nunjucks.FileSystemLoader(sharedDirs),
       {
         // TODO: Вынести в конфиг Render
         watch: true,
