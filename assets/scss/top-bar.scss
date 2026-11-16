@@ -9,13 +9,11 @@
 // 1. Top-bar — flex-сплит
 // === === === === === === === === === === === ===
 .top-bar {
-  display: flex;
-  align-items: stretch;
-  width: 100%;
-  // Фиксация шапки (лого + navbar + breadcrumb) вверху при прокрутке (14.11.2026)
+  // контейнер: полоса на всю ширину + лого/крошки поверх
   position: sticky;
   top: 0;
   z-index: 1000;
+  width: 100%;
 }
 
 // === Единый публичный фронтенд: шапка поверх контента ===
@@ -34,15 +32,18 @@ body:has(> .top-bar) {
   min-height: 100%;
 }
 
-// Лого-блок (176px) частично наезжает на main сверху: main поднят на 80px
+// Лого-блок (176px) частично наезжает на main сверху; main поднят на 80px
 body:has(> .top-bar) > main {
-  margin-top: -80px;
+  margin-top: 5px;
 }
 
 // === === === === === === === === === === === ===
-// 2. Лого-блок (176×176, beige фон, SVG-лого)
+// 2. Лого-блок (176×176, beige фон, SVG-лого) — ПОВЕРХ полосы, слева
 // === === === === === === === === === === === ===
 .logo-block {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 176px;
   min-width: 176px;
   height: 176px;
@@ -50,7 +51,7 @@ body:has(> .top-bar) > main {
   align-items: center;
   justify-content: center;
   background: #f0f0dc;
-  flex-shrink: 0;
+  z-index: 2;
   transition: width 0.3s ease, height 0.3s ease, min-width 0.3s ease;
 
   svg,
@@ -76,24 +77,16 @@ body:has(> .top-bar) > main {
 }
 
 // === === === === === === === === === === === ===
-// 3. Nav-area — правая часть (stacks navbar + breadcrumb)
-// === === === === === === === === === === === ===
-.nav-area {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-// === === === === === === === === === === === ===
-// 4. Navbar — тёмная панель навигации
+// 3. Navbar — полоса на всю ширину шапки, ссылки ПО ЦЕНТРУ экрана
 // === === === === === === === === === === === ===
 .navbar {
+  // полоса: на всю ширину шапки (фон от края до края)
+  width: 100%;
   background: #343A40;
   min-height: 5.67rem;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: center;   // центр ВСЕЙ шапки, а не правой колонки
   padding: 0 2rem;
 
   a {
@@ -117,12 +110,14 @@ body:has(> .top-bar) > main {
 }
 
 // === === === === === === === === === === === ===
-// 5. Breadcrumb — под navbar, в правой колонке (из .dest-breadcrumb)
+// 5. Breadcrumb — под полосой, слева, под лого (из .dest-breadcrumb)
 // === === === === === === === === === === === ===
 .dest-breadcrumb {
+  position: absolute;
+  top: 5.67rem;              // сразу под navbar
+  left: calc(1rem + 176px);  // правее лого (176px) + отступ
   font-size: 1rem;
   color: #6b7280;
-  margin-left: 1rem;
   margin-top: 0.3rem;
   ol {
     list-style: none;

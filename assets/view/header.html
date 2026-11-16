@@ -3,37 +3,46 @@
    Используется через {% include "header.html" %}
    (require: path к assets/view/ в FileSystemLoader render MC)
 
+   ВЁРСТКА (16.11.2026):
+   - navbar (тёмная полоса) — ПЕРВЫМ в DOM, растянут на всю ширину
+     шапки как фоновый слой; ссылки центрированы по центру ВСЕЙ
+     шапки (ширины экрана).
+   - лого (beige) — лежит ПОВЕРХ полосы, прижато влево.
+   - навигация по центру экрана, а не правой колонки, поэтому при
+     сжатии лого 176px → 5.67rem ссылки НЕ сдвигаются.
+
    Данные (из data, пробрасывается через контроллер):
      breadcrumb: [{name, url, current}]  —  от корня к текущей странице
    ============================================================ #}
 
 <header class="top-bar">
-  {# ---- Логотип 176×176 (beige фон + SVG) ---- #}
+
+  {# ---- ПОЛОСА НАВИГАЦИИ на всю ширину (ссылки по центру экрана) ---- #}
+  <nav class="navbar" role="navigation">
+    <a href="/" class="active">Главная</a>
+    <a href="/destinations/">Направления</a>
+  </nav>
+
+  {# ---- ЛОГО ПОВЕРХ полосы, прижато влево (beige фон + SVG) ---- #}
   <div class="logo-block">
     <img src="/public/images/logo.svg" alt="Frt" width="176" height="176" />
   </div>
 
-  {# ---- Нав + хлебные крошки (правая колонка) ---- #}
-  <div class="nav-area">
-    <nav class="navbar" role="navigation">
-      <a href="/" class="active">Главная</a>
-      <a href="/destinations/">Направления</a>
-    </nav>
+  {# ---- ХЛЕБНЫЕ КРОШКИ ниже, слева от контента ---- #}
+  {% if breadcrumb and breadcrumb.length %}
+  <nav class="dest-breadcrumb" aria-label="breadcrumb">
+    <ol>
+      {% for crumb in breadcrumb %}
+      <li>
+        {% if crumb.current %}
+        <span aria-current="page">{{ crumb.name }}</span>
+        {% else %}
+        <a href="{{ crumb.url }}">{{ crumb.name }}</a>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ol>
+  </nav>
+  {% endif %}
 
-    {% if breadcrumb and breadcrumb.length %}
-    <nav class="dest-breadcrumb" aria-label="breadcrumb">
-      <ol>
-        {% for crumb in breadcrumb %}
-        <li>
-          {% if crumb.current %}
-          <span aria-current="page">{{ crumb.name }}</span>
-          {% else %}
-          <a href="{{ crumb.url }}">{{ crumb.name }}</a>
-          {% endif %}
-        </li>
-        {% endfor %}
-      </ol>
-    </nav>
-    {% endif %}
-  </div>
 </header>
