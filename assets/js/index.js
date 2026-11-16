@@ -19,6 +19,7 @@ import message from './system/message.js'
 import { data, attr } from './system/attribute.js'
 
 import { formatBytes } from './core/gb.js'
+import initTopbar from './core/topbar.js'
 
 import Dialog from './modal/index.js'
 
@@ -37,3 +38,5 @@ const _$ = {
 }
 
 window._$ = _$
+
+initTopbar()

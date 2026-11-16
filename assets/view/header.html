@@ -7,7 +7,7 @@
      breadcrumb: [{name, url, current}]  —  от корня к текущей странице
    ============================================================ #}
 
-<div class="top-bar">
+<header class="top-bar">
   {# ---- Логотип 176×176 (beige фон + SVG) ---- #}
   <div class="logo-block">
     <img src="/public/images/logo.svg" alt="Frt" width="176" height="176" />
@@ -16,7 +16,6 @@
   {# ---- Нав + хлебные крошки (правая колонка) ---- #}
   <div class="nav-area">
     <nav class="navbar" role="navigation">
-      <span class="brand">Navbar</span>
       <a href="/" class="active">Главная</a>
       <a href="/destinations/">Направления</a>
     </nav>
@@ -37,4 +36,4 @@
     </nav>
     {% endif %}
   </div>
-</div>
+</header>
