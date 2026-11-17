@@ -42,25 +42,35 @@
 {% if description %}<p class="dest-desc">{{ description }}</p>{% endif %}
 {% endif %}
 
-{# ---------- Бейдж типа объекта (DestType) ---------- #}
-{% if type_badge %}
-<div class="dest-type-badge">
-  <span class="dest-type-badge-icon" data-icon="{{ type_badge.icon }}"></span>
-  <span class="dest-type-badge-name">{{ type_badge.name }}</span>
-</div>
-{% endif %}
-
-{# ---------- Кнопка «В поездку» ---------- #}
-{# Только гео-объекты с типом объекта (озеро, водопад… — HAS_TYPE → DestType).
-   Хабы-направления (страна/регион) типа не имеют → кнопки у них нет. #}
-{% if destLat and destLng and destHasType %}
-<div class="dest-add-trip">
-  <button class="dest-add-trip-btn" onclick="DestTrips.open(this)" data-name="{{ destName }}" data-lat="{{ destLat }}" data-lng="{{ destLng }}" data-osm-id="{{ destOsmId }}" data-slug="{{ destSlug }}">
-    + В поездку
-  </button>
-  <div class="dest-add-trip-dropdown" style="display:none">
-    <div class="dest-add-trip-loading">Загрузка поездок…</div>
+{# ---------- Мета-блок: тип объекта + гео-координаты (слева), кнопка «В поездку» (справа) ---------- #}
+{% if type_badge or (destLat and destLng) %}
+<div class="dest-meta">
+  <div class="dest-meta-info">
+    {% if type_badge %}
+    <div class="dest-type-badge">
+      <span class="dest-type-badge-icon" data-icon="{{ type_badge.icon }}"></span>
+      <span class="dest-type-badge-name">{{ type_badge.name }}</span>
+    </div>
+    {% endif %}
+    {% if destLat and destLng %}
+    <div class="dest-geo">
+      <span class="dest-geo-coord">Ш: {{ destLat }}</span>
+      <span class="dest-geo-coord">Д: {{ destLng }}</span>
+    </div>
+    {% endif %}
   </div>
+  {# Кнопка «В поездку» — только гео-объекты с типом (озеро, водопад… — HAS_TYPE → DestType).
+     Хабы-направления (страна/регион) типа не имеют → кнопки у них нет. #}
+  {% if destLat and destLng and destHasType %}
+  <div class="dest-add-trip">
+    <button class="dest-add-trip-btn" onclick="DestTrips.open(this)" data-name="{{ destName }}" data-lat="{{ destLat }}" data-lng="{{ destLng }}" data-osm-id="{{ destOsmId }}" data-slug="{{ destSlug }}">
+      <span>+ В поездку</span>
+    </button>
+    <div class="dest-add-trip-dropdown" style="display:none">
+      <div class="dest-add-trip-loading">Загрузка поездок…</div>
+    </div>
+  </div>
+  {% endif %}
 </div>
 {% endif %}
 

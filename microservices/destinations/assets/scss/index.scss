@@ -234,20 +234,64 @@ h2.dest-h2 {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 24px;
   padding: 6px 14px;
   border-radius: 20px;
   background: #f3f4f6;
   font-size: 0.9rem;
   color: #374151;
   .dest-type-badge-icon {
-    width: 18px;
-    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
     background: #9ca3af;
     border-radius: 50%;
+    svg {
+      display: block;
+    }
   }
   .dest-type-badge-name {
     font-weight: 500;
+  }
+}
+
+// ---- Мета-блок: тип объекта + гео-координаты слева, кнопка «В поездку» справа ----
+.dest-meta {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 20px 0;
+  height: 70px;
+  margin-top: -70px;
+  background-color: #fff;
+}
+
+.dest-meta-info {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  .dest-type-badge {
+    margin-bottom: 0;
+  }
+}
+
+.dest-geo {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  background: #f0fdf4;
+  font-size: 0.9rem;
+  color: #166534;
+  .dest-geo-coord {
+    white-space: nowrap;
   }
 }
 
@@ -281,24 +325,57 @@ h2.dest-h2 {
 // ---- Кнопка «В поездку» ----
 .dest-add-trip {
   position: relative;
-  display: inline-block;
-  margin: 20px 0;
+  align-self: stretch;
+  display: flex;
 }
 
 .dest-add-trip-btn {
-  display: inline-block;
-  padding: 10px 24px;
-  background: #2563eb;
+  position: relative;
+  overflow: hidden;
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 2.5rem;
+  background: #343a40;
   color: #fff;
   border: none;
-  border-radius: 8px;
+  border-radius: 0;
   font-size: 1rem;
-  font-weight: 600;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
   cursor: pointer;
-  transition: background .15s;
-  &:hover {
-    background: #1d4ed8;
+  line-height: 1.5;
+
+  span {
+    position: relative;
+    z-index: 1;
+    mix-blend-mode: difference;
   }
+
+  // Слайдер-эффект на hover (адаптация .btn-8): скос + белая заливка
+  &:before,
+  &:after {
+    --tilt: 1.2rem;
+    background: #fffecd;
+    clip-path: polygon(0 0, calc(100% - var(--tilt)) 0, 100% 100%, 0 100%);
+    content: "";
+    display: block;
+    height: 100%;
+    left: calc(-100% - var(--tilt));
+    position: absolute;
+    top: 0;
+    transform: translateX(var(--progress, 0));
+    transition: transform 0.2s ease;
+    width: calc(100% + var(--tilt));
+  }
+  &:after {
+    left: 100%;
+    transform: translateX(var(--progress, 0)) rotate(180deg);
+    z-index: -1;
+  }
+  &:hover:before { --progress: 100%; }
+  &:hover:after { --progress: -100%; }
 }
 
 .dest-add-trip-dropdown {
