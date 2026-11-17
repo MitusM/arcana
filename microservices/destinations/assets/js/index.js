@@ -6,3 +6,6 @@
 // ============================================================
 import '../scss/index.scss'
 import './trips.js'
+import initTypeBadgeIcon from './typeBadgeIcon.js'
+
+initTypeBadgeIcon()
