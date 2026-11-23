@@ -9,6 +9,7 @@
 @mixin content-typography($selector: '.dest-content') {
   #{$selector} {
     font-size: 1rem;
+    padding-left: 1rem;
     line-height: 1.75;
     color: #1f2937;
 
