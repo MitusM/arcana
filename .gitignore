@@ -121,3 +121,6 @@ og-cache/
 
 # Ручные бэкапы файлов перед правками
 *.bak*
+
+# Webpack-конфиг arcana — нужен в репо
+!webpack/webpack.config.js
