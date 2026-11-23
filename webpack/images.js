@@ -3,41 +3,17 @@ module.exports = () => {
     module: {
       rules: [
         {
+          // Картинки: webpack 5 asset modules вместо deprecated file-loader
+          // (file-loader с outputPath писал JS-стабы в public/js/ и копии —
+          //  из-за этого при каждой сборке в public/js/ появлялся мусор:
+          //  lego.gif, rotating-square.gif, close2.svg, color-wheel.svg).
+          // generator.filename '../images/[name][ext]' — эмитим в public/images/,
+          // туда же, куда ссылаются url(../images/...) из CSS (public/css/style.css).
           test: /\.(gif|png|jpe?g|webp|svg)$/,
-          use: [
-            {
-              loader: "file-loader",
-              options: {
-                outputPath: "../images/",
-                name: "[name].[ext]",
-              },
-            },
-            {
-              loader: "image-webpack-loader",
-              options: {
-                bypassOnDebug: true, // webpack@1.x
-                disable: true, // webpack@2.x and newer
-                mozjpeg: {
-                  progressive: true,
-                },
-                // optipng.enabled: false will disable optipng
-                optipng: {
-                  enabled: false,
-                },
-                pngquant: {
-                  quality: [0.65, 0.9],
-                  speed: 4,
-                },
-                // gifsicle: {
-                //   interlaced: false,
-                // },
-                // the webp option will enable WEBP
-                webp: {
-                  quality: 75,
-                },
-              },
-            },
-          ],
+          type: 'asset/resource',
+          generator: {
+            filename: '../images/[name][ext]',
+          },
         },
       ],
     },
