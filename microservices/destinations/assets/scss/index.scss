@@ -29,12 +29,18 @@ h1.dest-h1 {
   margin-bottom: 28px;
 }
 
+@import "content-styles";
+
 // ------------------------------------------------------------
+@include content-typography('.dest-content');
+
 .dest-content {
-  font-size: 1rem;
+  // Специфичные переопределения для destinations (если нужны)
   img {
     max-width: 100%;
     height: auto;
+    border-radius: 8px;
+    margin: 1.2em 0;
   }
 }
 

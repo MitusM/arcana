@@ -1,0 +1,135 @@
+// ============================================================
+// _content-styles.scss — стилизация контента статьи/материала
+// Переиспользуется: destinations/assets/scss/, article/assets/scss/
+// ============================================================
+
+// Миксин для стилизации контента внутри блока с классом $selector
+// По умолчанию — `.dest-content` (destinations), но можно передать
+// другой класс (например `.article-content` для article).
+@mixin content-typography($selector: '.dest-content') {
+  #{$selector} {
+    font-size: 1rem;
+    line-height: 1.75;
+    color: #1f2937;
+
+    // Заголовки
+    h2 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin: 2em 0 0.6em;
+      padding-bottom: 0.35em;
+      border-bottom: 2px solid #e5e7eb;
+      line-height: 1.3;
+      &:first-child { margin-top: 0; }
+    }
+
+    h3 {
+      font-size: 1.2rem;
+      font-weight: 600;
+      margin: 1.5em 0 0.5em;
+      line-height: 1.35;
+      color: #111827;
+    }
+
+    h4 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      margin: 1.2em 0 0.4em;
+      line-height: 1.4;
+      color: #1f2937;
+    }
+
+    // Параграфы
+    p {
+      margin: 0 0 1em;
+    }
+
+    // Списки
+    ul, ol {
+      margin: 0 0 1.2em;
+      padding-left: 1.5em;
+    }
+
+    li {
+      margin-bottom: 0.35em;
+      line-height: 1.65;
+    }
+
+    // Изображения
+    img {
+      max-width: 100%;
+      height: auto;
+      border-radius: 8px;
+      margin: 1.2em 0;
+    }
+
+    // Цитаты (на будущее)
+    blockquote {
+      margin: 1.2em 0;
+      padding: 0.8em 1.2em;
+      border-left: 4px solid #e5e7eb;
+      background: #f9fafb;
+      border-radius: 0 8px 8px 0;
+      color: #374151;
+      font-style: italic;
+      p {
+        margin: 0;
+        & + p {
+          margin-top: 0.6em;
+        }
+      }
+    }
+
+    // Код
+    code {
+      font-size: 0.9em;
+      background: #f3f4f6;
+      padding: 0.15em 0.4em;
+      border-radius: 4px;
+      color: #be185d;
+    }
+
+    pre {
+      margin: 1.2em 0;
+      padding: 1em;
+      background: #1f2937;
+      color: #f3f4f6;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-size: 0.9rem;
+      line-height: 1.5;
+      code {
+        background: none;
+        padding: 0;
+        color: inherit;
+      }
+    }
+
+    // Таблицы (на будущее)
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.2em 0;
+      font-size: 0.95rem;
+      th, td {
+        padding: 0.6em 0.8em;
+        border: 1px solid #e5e7eb;
+        text-align: left;
+      }
+      th {
+        background: #f9fafb;
+        font-weight: 600;
+      }
+      tr:nth-child(even) {
+        background: #fafafa;
+      }
+    }
+
+    // Горизонтальная линия
+    hr {
+      border: none;
+      border-top: 1px solid #e5e7eb;
+      margin: 1.5em 0;
+    }
+  }
+}
