@@ -29,10 +29,7 @@ h1.dest-h1 {
   margin-bottom: 28px;
 }
 
-@import "content-styles";
-
 // ------------------------------------------------------------
-@include content-typography('.dest-content');
 
 .dest-content {
   // Специфичные переопределения для destinations (если нужны)

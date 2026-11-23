@@ -13,6 +13,7 @@
 @use 'button';
 @use 'dialog';
 @use 'preloader';
+@use 'content-styles';
 
 // === === === === === === === === === === === ===
 //* MAIN
@@ -55,6 +56,9 @@
   justify-content: center;
   justify-items: center;
 }
+
+@include content-styles.content-typography('.dest-content');
+@include content-styles.content-typography('.article-content');
 
 .align-center {
   align-items: center;
