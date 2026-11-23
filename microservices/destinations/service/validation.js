@@ -1,6 +1,8 @@
 import translitFactory from 'cyrillic-to-translit-js'
 const _tr = translitFactory({ preset: 'ru' })
 
+import { marked } from 'marked'
+
 // === === === === === === === === === === === ===
 // validation.js — валидация данных узлов Dest (админ-CRUD)
 //
@@ -19,6 +21,7 @@ export const VALID_TYPES = [
   'ozero', 'vodopad', 'gora', 'vershina', 'peshchera', 'reka',
   'dolina', 'plyazh', 'ostrov', 'park', 'zapovednik', 'muzej',
   'vidovaya-ploshchadka', 'rodnik',
+  'ushchele', 'istoricheskie',
 ]
 
 // Валидация slug типа: проверка на существование в списке
@@ -112,7 +115,16 @@ export function validateDestInput(body, { requireTitle = true, levelRequired = f
   if (body.description !== undefined) clean.description = String(body.description)
   if (body.summary !== undefined) clean.summary = String(body.summary)
   if (body.thumbnail !== undefined) clean.thumbnail = String(body.thumbnail)
-  if (body.content !== undefined) clean.content = body.content
+  if (body.content !== undefined) {
+    let c = body.content
+    if (typeof c === 'string' && c.trim()) {
+      // Если контент не содержит HTML-теги — конвертируем Markdown в HTML
+      if (!/<[a-z][\s\S]*>/i.test(c)) {
+        c = marked(c, { async: false, breaks: false, gfm: true })
+      }
+    }
+    clean.content = c
+  }
   if (body.image !== undefined) clean.image = String(body.image)
 
   if (body.lat !== undefined && body.lng !== undefined) {

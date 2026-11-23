@@ -15,6 +15,10 @@
     <meta property="og:title" content="{{ og_title | default(title) }}" />
     {% if og_description %}<meta property="og:description" content="{{ og_description }}" />{% endif %}
     {% if image %}<meta property="og:image" content="{{ image }}" />{% endif %}
+    {# Fraunces — заголовочный serif для hero-заголовков (из прототипа wander-russia.html) #}
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,200..900&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/public/css/style.css" />
     <link rel="stylesheet" href="/public/css/vendors.css" />
     <link rel="stylesheet" href="/public/css/destinations.css" />
@@ -25,7 +29,9 @@
     {% endif %}
   </head>
   <body>
+    {% if not admin_page %}
     {% include "header.html" %}
+    {% endif %}
 
     <main class="dest-main{% if admin_page %} dest-main-admin{% endif %}" role="main">
       {% include page %}

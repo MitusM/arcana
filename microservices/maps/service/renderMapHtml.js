@@ -116,14 +116,16 @@ function renderMapHtml(opts = {}) {
       peak:'#8b5cf6', cave:'#92400e', river:'#0ea5e9',
       valley:'#22c55e', beach:'#eab308', island:'#14b8a6',
       park:'#84cc16', reserve:'#15803d', museum:'#f97316',
-      viewpoint:'#ef4444', spring:'#38bdf8'
+      viewpoint:'#ef4444', spring:'#38bdf8',
+      canyon:'#78716c', monument:'#b45309'
     };
     const TYPE_NAMES = {
       lake:'Озеро', waterfall:'Водопад', mountain:'Гора',
       peak:'Вершина', cave:'Пещера', river:'Река',
       valley:'Долина', beach:'Пляж', island:'Остров',
       park:'Парк', reserve:'Заповедник', museum:'Музей',
-      viewpoint:'Смотровая', spring:'Родник'
+      viewpoint:'Смотровая', spring:'Родник',
+      canyon:'Ущелье', monument:'Исторические'
     };
     // ── Инлайн SVG иконки 14 типов (масштаб 12×12, встраиваются в pin) ──
     // Где возможно — Maki-стиль, иначе минималистичный силуэт.
@@ -141,7 +143,9 @@ function renderMapHtml(opts = {}) {
       reserve:'<svg viewBox="0 0 15 15" width="12" height="12"><path d="M7 3l-3 5h2l-1 5h6l-1-5h2z" fill="#fff"/></svg>',
       museum:'<svg viewBox="0 0 15 15" width="12" height="12"><path d="M7.5 1L2 4v1h11V4zM3 6v5l-1 1v1h11v-1l-1-1V6" fill="#fff"/></svg>',
       viewpoint:'<svg viewBox="0 0 15 15" width="12" height="12"><circle cx="7.5" cy="7.5" r="2" fill="#fff"/><circle cx="7.5" cy="7.5" r="4.5" fill="none" stroke="#fff" stroke-width="1.2"/></svg>',
-      spring:'<svg viewBox="0 0 15 15" width="12" height="12"><ellipse cx="7.5" cy="10" rx="3.5" ry="3" fill="#fff"/><path d="M5 8c1-3 2-4 2.5-6.5" fill="none" stroke="#fff" stroke-width="1.2" stroke-linecap="round"/></svg>'
+      spring:'<svg viewBox="0 0 15 15" width="12" height="12"><ellipse cx="7.5" cy="10" rx="3.5" ry="3" fill="#fff"/><path d="M5 8c1-3 2-4 2.5-6.5" fill="none" stroke="#fff" stroke-width="1.2" stroke-linecap="round"/></svg>',
+      canyon:'<svg viewBox="0 0 15 15" width="12" height="12"><path d="M1 13c2-3 4-10 6.5-10S14 10 14 13M3 13V8h2v5M7 13V3h1v10M10 13V8h2v5" fill="none" stroke="#fff" stroke-width="1.2" stroke-linecap="round"/></svg>',
+      monument:'<svg viewBox="0 0 15 15" width="12" height="12"><rect x="5.5" y="2" width="4" height="1" fill="#fff"/><rect x="5" y="3" width="5" height="1" fill="#fff"/><path d="M6 4v8l-2 1v1h7v-1l-2-1V4" fill="none" stroke="#fff" stroke-width="1.2"/><circle cx="7.5" cy="6" r="1.5" fill="#fff"/></svg>'
     };
 
     // валидные точки (lat/lng обязательны)

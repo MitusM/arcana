@@ -18,7 +18,9 @@ const TYPE_SVG = {
   reserve: '<svg viewBox="0 0 15 15" width="38" height="38"><path d="M7 3l-3 5h2l-1 5h6l-1-5h2z" fill="#374151"/></svg>',
   museum: '<svg viewBox="0 0 15 15" width="38" height="38"><path d="M7.5 1L2 4v1h11V4zM3 6v5l-1 1v1h11v-1l-1-1V6" fill="#374151"/></svg>',
   viewpoint: '<svg viewBox="0 0 15 15" width="38" height="38"><circle cx="7.5" cy="7.5" r="2" fill="#374151"/><circle cx="7.5" cy="7.5" r="4.5" fill="none" stroke="#374151" stroke-width="1.2"/></svg>',
-  spring: '<svg viewBox="0 0 15 15" width="38" height="38"><ellipse cx="7.5" cy="10" rx="3.5" ry="3" fill="#374151"/><path d="M5 8c1-3 2-4 2.5-6.5" fill="none" stroke="#374151" stroke-width="1.2" stroke-linecap="round"/></svg>'
+  spring: '<svg viewBox="0 0 15 15" width="38" height="38"><ellipse cx="7.5" cy="10" rx="3.5" ry="3" fill="#374151"/><path d="M5 8c1-3 2-4 2.5-6.5" fill="none" stroke="#374151" stroke-width="1.2" stroke-linecap="round"/></svg>',
+  canyon: '<svg viewBox="0 0 15 15" width="38" height="38"><path d="M1 13c2-3 4-10 6.5-10S14 10 14 13M3 13V8h2v5M7 13V3h1v10M10 13V8h2v5" fill="none" stroke="#374151" stroke-width="1.2" stroke-linecap="round"/></svg>',
+  monument: '<svg viewBox="0 0 15 15" width="38" height="38"><rect x="5.5" y="2" width="4" height="1" fill="#374151"/><rect x="5" y="3" width="5" height="1" fill="#374151"/><path d="M6 4v8l-2 1v1h7v-1l-2-1V4" fill="none" stroke="#374151" stroke-width="1.2"/><circle cx="7.5" cy="6" r="1.5" fill="#374151"/></svg>'
 };
 
 export default function initTypeBadgeIcon () {
