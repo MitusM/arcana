@@ -787,12 +787,12 @@ const endpoints = async (app) => {
       if (!rid) return errorHandler(res, 'rid обязателен', 400)
       // удалить рёбра и вершину.
       // ArcadeDB PG Wire: `DELETE EDGE ...` не парсится — двухшагово:
-      // SELECT @rid → DELETE FROM <rid>.
+      // SELECT @rid → DELETE FROM <EdgeClass> WHERE @rid = <rid>.
       const edges = await db.queryAll(
         `SELECT @rid as rid FROM PART_OF WHERE @out = ${rid} OR @in = ${rid}`
       )
       for (const e of edges || []) {
-        if (e && e.rid) await db.command(`DELETE FROM ${e.rid}`)
+        if (e && e.rid) await db.deleteEdge('PART_OF', e.rid)
       }
       await db.deleteDest(rid)
       await invalidatePageCache()

@@ -71,6 +71,17 @@ class Model extends PDO {
     }
   }
 
+  /** Удалить ребро по RID.
+   * ArcadeDB PG Wire: `DELETE FROM <rid>` парсится, но возвращает count 0
+   * (ребро не удаляется). Единственный рабочий синтаксис —
+   * `DELETE FROM <EdgeClass> WHERE @rid = <rid>` (найдено 28.11.2026,
+   * баг мульти-родителей PART_OF). */
+  async deleteEdge(edgeClass, edgeRid) {
+    if (!edgeClass || !edgeRid) return false
+    const res = await this.command(`DELETE FROM ${edgeClass} WHERE @rid = ${edgeRid}`)
+    return !!(res && res.length > 0)
+  }
+
   // --- Создать узел места (вершина Dest) ---
   // parentRid опционален — при указании создаётся ребро PART_OF.
   // ПАРАМЕТРЫ ИНЛАЙНЯТСЯ в SQL (orientjs в этом стеке не подставляет
@@ -236,14 +247,15 @@ class Model extends PDO {
   // --- Сменить родителя: удалить старые PART_OF из узла, добавить новое ---
   //
   // ВАЖНО (ArcadeDB PG Wire): DELETE EDGE не парсится. Удаляем ребро как запись.
-  // SELECT @rid FROM PART_OF WHERE out = X → DELETE FROM <rid>
+  // Синтаксис: SELECT @rid FROM PART_OF WHERE @out = X (колонка БЕЗ @ не работает!)
+  // → DELETE FROM PART_OF WHERE @rid = <rid> (`DELETE FROM <rid>` даёт count 0 — баг 28.11.2026).
   async moveDest(rid, newParentRid) {
     // найти все рёбра PART_OF, где rid — исходящий (ребёнок)
     const edges = await this.queryAll(
-      `SELECT @rid as rid FROM PART_OF WHERE out = ${rid}`
+      `SELECT @rid as rid FROM PART_OF WHERE @out = ${rid}`
     )
     for (const e of edges || []) {
-      if (e && e.rid) await this.command(`DELETE FROM ${e.rid}`)
+      if (e && e.rid) await this.deleteEdge('PART_OF', e.rid)
     }
     if (newParentRid) {
       await this.create('PART_OF', rid, newParentRid)
@@ -723,7 +735,7 @@ class Model extends PDO {
       `SELECT @rid FROM HAS_TYPE WHERE @out = ${destRid}`
     )
     for (const e of oldEdges || []) {
-      if (e && e['@rid']) await this.command(`DELETE FROM ${e['@rid']}`)
+      if (e && e['@rid']) await this.deleteEdge('HAS_TYPE', e['@rid'])
     }
     if (!typeSlug) return { done: true } // сняли тип, ребра нет
     const type = await this.queryOne(
