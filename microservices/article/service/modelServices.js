@@ -69,6 +69,25 @@ class Model extends PDO {
     }
   }
 
+  /** Удалить рёбра (ArcadeDB PG Wire).
+   *  ⚠️ Колонки рёбер называются @out/@in (без @ не работают), а
+   *  `DELETE FROM <rid>` парсится, но возвращает count 0 — ребро НЕ удаляется.
+   *  Рабочий синтаксис: DELETE FROM <EdgeClass> WHERE @out = X [AND @in = Y]
+   *  (баг найден 28.11.2026 в destinations; здесь тот же фикс).
+   *  @param {string} edgeClass 'HAS_CHILD' | 'HAS_ARTICLE'
+   *  @param {string} [fromRid]  фильтр по @out (исходящее ребро)
+   *  @param {string} [toRid]    фильтр по @in (входящее ребро) */
+  async deleteEdges(edgeClass, fromRid, toRid) {
+    const cond = []
+    if (fromRid) cond.push(`@out = ${this._rid(fromRid)}`)
+    if (toRid) cond.push(`@in = ${this._rid(toRid)}`)
+    if (!cond.length) return { done: true, deleted: 0 }
+    const res = await this.command(`DELETE FROM ${edgeClass} WHERE ${cond.join(' AND ')}`)
+    // ArcadeDB PG Wire возвращает для DELETE строку [{count: 'N'}] (pg rowCount не заполнен)
+    const deleted = Number((Array.isArray(res) && res[0] && res[0].count) || 0)
+    return { done: true, deleted }
+  }
+
   // ============================================================
   //  Утилиты
   // ============================================================
@@ -125,10 +144,10 @@ class Model extends PDO {
   async _deleteVertex(rid) {
     try {
       await this.db.command('BEGIN')
-      await this.db.command(`DELETE FROM HAS_CHILD WHERE out = ${rid}`)
-      await this.db.command(`DELETE FROM HAS_CHILD WHERE in = ${rid}`)
-      await this.db.command(`DELETE FROM HAS_ARTICLE WHERE out = ${rid}`)
-      await this.db.command(`DELETE FROM HAS_ARTICLE WHERE in = ${rid}`)
+      await this.deleteEdges('HAS_CHILD', rid)
+      await this.deleteEdges('HAS_CHILD', null, rid)
+      await this.deleteEdges('HAS_ARTICLE', rid)
+      await this.deleteEdges('HAS_ARTICLE', null, rid)
       await this.db.command(`DELETE VERTEX FROM ${rid}`)
       await this.db.command('COMMIT')
       return { done: true }
@@ -358,15 +377,15 @@ class Model extends PDO {
         )
         for (const a of articles || []) {
           const ar = this._rid(a.rid)
-          await this.db.command(`DELETE FROM HAS_ARTICLE WHERE out = ${ar}`)
-          await this.db.command(`DELETE FROM HAS_ARTICLE WHERE in = ${ar}`)
+          await this.deleteEdges('HAS_ARTICLE', ar)
+          await this.deleteEdges('HAS_ARTICLE', null, ar)
           await this.db.command(`DELETE VERTEX FROM ${ar}`)
         }
       }
       for (const rr of rubricRids) {
-        await this.db.command(`DELETE FROM HAS_CHILD WHERE out = ${rr}`)
-        await this.db.command(`DELETE FROM HAS_CHILD WHERE in = ${rr}`)
-        await this.db.command(`DELETE FROM HAS_ARTICLE WHERE in = ${rr}`)
+        await this.deleteEdges('HAS_CHILD', rr)
+        await this.deleteEdges('HAS_CHILD', null, rr)
+        await this.deleteEdges('HAS_ARTICLE', null, rr)
         await this.db.command(`DELETE VERTEX FROM ${rr}`)
       }
       await this.db.command('COMMIT')
@@ -520,13 +539,8 @@ class Model extends PDO {
     const r = this._rid(rid)
     try {
       await this.db.command('BEGIN')
-      // удалить текущее ребро вверх: SELECT @rid FROM HAS_CHILD WHERE out = r → DELETE FROM <edgeRid>
-      const edges = await this.db.queryAll(
-        `SELECT @rid as rid FROM HAS_CHILD WHERE out = ${r}`,
-      )
-      for (const e of edges || []) {
-        if (e && e.rid) await this.db.command(`DELETE FROM ${e.rid}`)
-      }
+      // удалить текущие рёбра вверх (ребёнок → новый родитель)
+      await this.deleteEdges('HAS_CHILD', r)
       if (newParentRid) {
         await this.db.createEdge('HAS_CHILD', r, this._rid(newParentRid))
       }
@@ -544,12 +558,7 @@ class Model extends PDO {
     const r = this._rid(rid)
     try {
       await this.db.command('BEGIN')
-      const edges = await this.db.queryAll(
-        `SELECT @rid as rid FROM HAS_ARTICLE WHERE out = ${r}`,
-      )
-      for (const e of edges || []) {
-        if (e && e.rid) await this.db.command(`DELETE FROM ${e.rid}`)
-      }
+      await this.deleteEdges('HAS_ARTICLE', r)
       await this.db.createEdge('HAS_ARTICLE', r, this._rid(newRubricRid))
       await this.db.command('COMMIT')
       return { done: true }
