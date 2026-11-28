@@ -168,10 +168,19 @@ const upload = async (req, res, appRootLocal, UPLOAD_DIR_LOCAL) => {
 
   const webpRel = String(wepFile).split(appRootLocal)[1]
 
+  // Миниатюра 480px для попапов карты — берём из уже сгенерированных resize-копий
+  // (НЕ создаём отдельный файл). Клиент админки читает body.thumbnail в поле
+  // «thumbnail» при клике «Сделать обложкой» — без него попап карты пустой.
+  const thumb =
+    (img || []).find((f) => Number(f.width) === 480) ||
+    (img && img[0]) ||
+    null
+
   return {
     status: 200,
     body: {
       original: { name: file0.filename, pathFile: file0.path },
+      thumbnail: (thumb && thumb.pathFile) || '',
       resize: obj,
       webpOriginal: {
         originalName: statF.name,
