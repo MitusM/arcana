@@ -497,7 +497,7 @@ import translitFactory from 'cyrillic-to-translit-js'
     slugManuallySet = false
     el('adm-form-title').textContent = 'Новый узел'
     el('f-rid').value = ''
-    ;['f-title', 'f-slug', 'f-h1', 'f-description', 'f-image', 'f-lat', 'f-lng', 'f-priority'].forEach(
+    ;['f-title', 'f-slug', 'f-h1', 'f-description', 'f-summary', 'f-thumbnail', 'f-image', 'f-lat', 'f-lng', 'f-priority'].forEach(
       function (id) {
         el(id).value = ''
       }
